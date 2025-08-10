@@ -8,11 +8,7 @@ export const metadata: Metadata = {
   description: "Skip the banks. Build equity together.",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body className="bg-gray-50 text-gray-800 min-h-screen">
