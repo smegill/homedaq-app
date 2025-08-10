@@ -1,8 +1,10 @@
 /** @type {import('tailwindcss').Config} */
-export default {
-  // Tailwind CSS v4: content globs are automatic. Add theme extensions here if needed.
-  theme: {
-    extend: {},
-  },
+module.exports = {
+  content: [
+    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
+  ],
+  theme: { extend: {} },
   plugins: [],
 };
