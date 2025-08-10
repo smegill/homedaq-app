@@ -1,26 +1,162 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
+/* ---------- Theme ---------- */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --brand-50:  #eef2ff;
+  --brand-100: #e0e7ff;
+  --brand-200: #c7d2fe;
+  --brand-500: #3b82f6; /* primary */
+  --brand-600: #2563eb;
+  --ink-900:   #0f172a; /* gray-900 */
+  --ink-800:   #1f2937; /* gray-800 */
+  --ink-700:   #334155; /* slate-700 */
+  --ink-600:   #475569; /* slate-600 */
+  --ink-500:   #64748b; /* slate-500 */
+  --paper:     #f8fafc; /* slate-50 */
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+html, body { height: 100%; }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* ---------- Site-wide background ---------- */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background:
+    /* subtle grid */
+    linear-gradient(to right, rgba(2,6,23,.06) 1px, transparent 1px) 0 0 / 28px 28px,
+    linear-gradient(to bottom, rgba(2,6,23,.06) 1px, transparent 1px) 0 0 / 28px 28px,
+    /* gradient wash */
+    radial-gradient(1200px 600px at 20% -10%, rgba(59,130,246,.18), transparent 50%),
+    radial-gradient(1000px 600px at 100% 0%, rgba(99,102,241,.16), transparent 50%),
+    var(--paper);
+  color: var(--ink-900);
+}
+
+/* Optional: super subtle grain */
+body::after {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  opacity: .035;
+  background-image:
+    url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140' viewBox='0 0 140 140'>\
+<filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter>\
+<rect width='100%' height='100%' filter='url(%23n)' opacity='0.35'/>\
+</svg>");
+  mix-blend-mode: multiply;
+}
+
+/* ---------- Reusable “component” classes (no @apply needed) ---------- */
+
+/* Container like Tailwind’s max-w-6xl mx-auto px-4 */
+.container-app {
+  max-width: 72rem;          /* max-w-6xl */
+  margin-left: auto;         /* mx-auto */
+  margin-right: auto;
+  padding-left: 1rem;        /* px-4 */
+  padding-right: 1rem;
+}
+
+/* Section spacing (add sm: classes inline in JSX if needed) */
+.section {
+  padding-top: 3rem;         /* py-12 */
+  padding-bottom: 3rem;
+}
+
+/* Section title base */
+.section-title {
+  font-size: 1.875rem;       /* text-3xl */
+  line-height: 2.25rem;
+  font-weight: 800;          /* font-extrabold */
+  letter-spacing: -0.01em;   /* tracking-tight-ish */
+  color: #1f2937;            /* gray-800 */
+  text-align: center;
+  margin-bottom: 2rem;       /* mb-8 */
+}
+
+/* Card */
+.card {
+  background-color: #fff;
+  border-radius: 1rem;       /* rounded-2xl */
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1),
+              0 2px 4px -2px rgb(0 0 0 / 0.1); /* shadow-md */
+  transition: box-shadow 200ms ease;
+}
+.card:hover {
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1),
+              0 4px 6px -4px rgb(0 0 0 / 0.1); /* hover:shadow-lg */
+}
+.card-pad {
+  padding: 1.25rem;          /* p-5 */
+}
+
+/* Buttons */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;     /* rounded-full */
+  background-color: #2563eb; /* blue-600 */
+  color: #fff;
+  padding: 0.625rem 1.5rem;  /* py-2.5 px-6 */
+  font-weight: 600;
+  box-shadow: 0 4px 6px -1px rgb(37 99 235 / 0.3);
+  transition: background-color 150ms ease, transform 150ms ease;
+}
+.btn-primary:hover { background-color: #1d4ed8; } /* blue-700 */
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background-color: #fff;
+  color: #1d4ed8;            /* blue-700 */
+  padding: 0.625rem 1.5rem;
+  font-weight: 600;
+  border: 1px solid #dbeafe; /* blue-100 */
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+  transition: background-color 150ms ease, transform 150ms ease;
+}
+.btn-secondary:hover { background-color: #eff6ff; } /* blue-50 */
+
+/* Form */
+.input {
+  width: 100%;
+  border-radius: 0.375rem;   /* rounded-md */
+  border: 1px solid #d1d5db; /* gray-300 */
+  background-color: #fff;
+  padding: 0.5rem 0.75rem;   /* py-2 px-3 */
+  color: #111827;            /* gray-900 */
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+}
+.input:focus {
+  outline: none;
+  border-color: #3b82f6;     /* blue-500 */
+  box-shadow: 0 0 0 3px rgb(59 130 246 / 0.4); /* ring-2 */
+}
+
+.label {
+  display: block;
+  font-size: 0.875rem;       /* text-sm */
+  font-weight: 500;
+  color: #374151;            /* gray-700 */
+  margin-bottom: 0.25rem;    /* mb-1 */
+}
+
+/* Nav links */
+.nav-link {
+  color: #374151;            /* gray-700 */
+  padding: 0.25rem 0.5rem;   /* py-1 px-2 */
+  border-radius: 0.375rem;
+  transition: color 150ms ease, background-color 150ms ease;
+}
+.nav-link:hover { color: #2563eb; } /* blue-600 */
+
+.nav-link-active {
+  color: #1d4ed8;            /* blue-700 */
+  background-color: #eff6ff; /* blue-50 */
+  font-weight: 600;
 }
