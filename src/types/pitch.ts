@@ -4,6 +4,7 @@ export type PitchStatus = 'draft' | 'submitted' | 'listed';
 
 export interface Pitch {
   id: PitchId;
+
   // Display
   title: string;
   summary: string;
@@ -16,12 +17,13 @@ export interface Pitch {
   postalCode: string;
 
   // Offer
-  amountSeeking: number;      // total amount to raise, in USD
-  valuation: number;          // pre- or implied property valuation, in USD
-  minInvestment: number;      // minimum ticket size, in USD
+  amountSeeking: number;      // total amount to raise, USD
+  valuation: number;          // implied property valuation, USD
+  minInvestment: number;      // minimum ticket size, USD
 
-  // Media (optional for now)
-  heroImageUrl?: string;
+  // Media
+  heroImageUrl?: string;      // primary image for cards
+  photos?: string[];          // optional gallery (data URLs for prototype)
 
   // Owner
   residentName: string;

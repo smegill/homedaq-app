@@ -1,92 +1,132 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import Section, { SectionContainer, SectionTitle } from "@/components/ui/Section";
-import { Card, CardBody } from "@/components/ui/Card";
-import Button from "@/components/ui/Button";
-import { getPitches, type Pitch } from "@/lib/storage";
+import * as React from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import Section from '@/components/ui/Section';
+import { Card } from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import { listPitches, subscribe } from '@/lib/storage';
+import type { Pitch } from '@/types/pitch';
+import GoogleMapEmbed from '@/components/GoogleMapEmbed';
+
+function formatCurrency(n: number) {
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+      .format(Number.isFinite(n) ? n : 0);
+  } catch {
+    return `$${Math.round(n).toLocaleString()}`;
+  }
+}
 
 export default function InvestPage() {
-  const [pitches, setPitches] = useState<Pitch[]>([]);
+  const router = useRouter();
+  const search = useSearchParams();
+  const previewId = search.get('preview') ?? undefined;
 
-  useEffect(() => {
-    setPitches(getPitches().reverse());
+  const [pitches, setPitches] = React.useState<Pitch[]>([]);
+  const cardRefs = React.useRef<Record<string, HTMLDivElement | null>>({});
+
+  React.useEffect(() => {
+    setPitches(listPitches());
+    const unsub = subscribe(() => setPitches(listPitches()));
+    return unsub;
   }, []);
 
+  React.useEffect(() => {
+    if (!previewId) return;
+    const el = cardRefs.current[previewId];
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [previewId, pitches.length]);
+
+  const clearPreview = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('preview');
+    router.replace(url.pathname + (url.search ? `?${url.searchParams.toString()}` : ''));
+  };
+
+  const displayed = pitches; // later: only "listed"
+
   return (
-    <div>
-      <Section>
-        <SectionContainer>
-          <SectionTitle>Browse Listings</SectionTitle>
+    <Section className="max-w-6xl mx-auto py-10">
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold text-ink-900">Browse Listings</h1>
+        {previewId && <Button onClick={clearPreview}>Clear preview</Button>}
+      </div>
 
-          {pitches.length === 0 ? (
-            <Card>
-              <CardBody>
-                <div className="text-center">
-                  <p className="text-ink-700">
-                    No resident pitches yet. Be the first to start one!
-                  </p>
-                  <div className="mt-4">
-                    <Button as="link" href="/resident/create">Start a Pitch</Button>
+      {displayed.length === 0 ? (
+        <Card className="p-8 text-center">
+          <h2 className="text-xl font-medium text-ink-900 mb-2">No listings yet</h2>
+          <p className="text-ink-600">Once pitches are submitted, they will appear here.</p>
+        </Card>
+      ) : (
+        <div className="grid gap-6 md:grid-cols-2">
+          {displayed.map((p) => {
+            const isPreview = previewId === p.id;
+            const thumbs = (p.photos ?? []).slice(0, 4);
+            const address = `${p.address1}, ${p.city}, ${p.state} ${p.postalCode}`;
+
+            return (
+              <Card
+                key={p.id}
+                ref={(el) => (cardRefs.current[p.id] = el)}
+                className={['p-5 transition-shadow', isPreview ? 'ring-2 ring-brand-500 shadow-lg' : ''].join(' ')}
+              >
+                {/* Hero image */}
+                {p.heroImageUrl ? (
+                  <div className="mb-4 overflow-hidden rounded-2xl border border-ink-200">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.heroImageUrl} alt={p.title} className="w-full h-40 object-cover" />
                   </div>
+                ) : (
+                  <div className="mb-4 h-40 rounded-2xl border border-dashed border-ink-200 bg-ink-50" />
+                )}
+
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-ink-900">{p.title}</h3>
+                    <p className="text-sm text-ink-600 mt-1">{p.summary}</p>
+                  </div>
+                  <span className="rounded-full bg-ink-100 text-ink-700 px-3 py-1 text-xs">{p.status}</span>
                 </div>
-              </CardBody>
-            </Card>
-          ) : (
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {pitches.map((p) => (
-                <Card key={p.id} className="overflow-hidden">
-                  {p.photos?.[0] && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={p.photos[0]}
-                      alt="Home"
-                      className="w-full h-44 object-cover"
-                    />
-                  )}
-                  <CardBody>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="font-semibold text-ink-800">
-                          {p.address}{p.city ? `, ${p.city}` : ""}
-                        </h3>
-                        <p className="text-sm text-ink-500 mt-1">
-                          Est. Value: ${p.estimatedValue ?? "—"} • Equity Offered: {p.equityPercent ?? "—"}%
-                        </p>
-                      </div>
-                    </div>
 
-                    {p.personalStory && (
-                      <p className="text-ink-700 text-sm mt-3 line-clamp-3">
-                        {p.personalStory}
-                      </p>
-                    )}
+                <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <div className="text-ink-500">Location</div>
+                  <div className="text-ink-900">
+                    {p.city}, {p.state} {p.postalCode}
+                  </div>
+                  <div className="text-ink-500">Seeking</div>
+                  <div className="text-ink-900">{formatCurrency(p.amountSeeking)}</div>
+                  <div className="text-ink-500">Min Investment</div>
+                  <div className="text-ink-900">{formatCurrency(p.minInvestment)}</div>
+                </div>
 
-                    <div className="mt-4 flex items-center gap-2">
-                      {p.zillowLink && (
-                        <a className="text-sm text-brand-700 hover:underline" href={p.zillowLink} target="_blank" rel="noreferrer">
-                          Zillow
-                        </a>
-                      )}
-                      {p.mlsLink && (
-                        <a className="text-sm text-brand-700 hover:underline" href={p.mlsLink} target="_blank" rel="noreferrer">
-                          MLS
-                        </a>
-                      )}
-                    </div>
+                {/* Thumbnails */}
+                {thumbs.length > 1 && (
+                  <ul className="mt-4 grid grid-cols-4 gap-2">
+                    {thumbs.map((u, i) => (
+                      <li key={i} className="overflow-hidden rounded-xl border border-ink-200">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={u} alt={`Photo ${i + 1}`} className="w-full h-16 object-cover" />
+                      </li>
+                    ))}
+                  </ul>
+                )}
 
-                    <div className="mt-5 flex gap-2">
-                      <Button variant="secondary" as="link" href={`/resident/dashboard`}>View Details</Button>
-                      <Button as="link" href={`/invest`}>Invest</Button>
-                    </div>
-                  </CardBody>
-                </Card>
-              ))}
-            </div>
-          )}
-        </SectionContainer>
-      </Section>
-    </div>
+                {/* Map preview */}
+                <GoogleMapEmbed className="mt-4" query={address} height={160} />
+
+                <div className="mt-5 flex gap-3">
+                  <Link href={`/invest?preview=${encodeURIComponent(p.id)}`}>
+                    <Button>View Details</Button>
+                  </Link>
+                  {isPreview && <Button onClick={clearPreview}>Done Previewing</Button>}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </Section>
   );
 }
