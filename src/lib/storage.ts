@@ -25,6 +25,8 @@ const SAMPLE: Pitch[] = [
     residentName: 'Alex Johnson',
     residentEmail: 'alex@example.com',
     status: 'submitted',
+    heroImageUrl: undefined,
+    photos: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
@@ -81,12 +83,18 @@ export function getPitch(id: PitchId): Pitch | undefined {
 
 export function createPitch(input: PitchInput): Pitch {
   const now = new Date().toISOString();
+
+  // If no hero explicitly provided but photos exist, use first photo
+  const hero = input.heroImageUrl ?? (input.photos?.[0] ?? undefined);
+
   const pitch: Pitch = {
     id: uid(),
     createdAt: now,
     updatedAt: now,
     ...input,
+    heroImageUrl: hero,
   };
+
   const next = [pitch, ...read()];
   write(next);
   return pitch;
@@ -99,9 +107,15 @@ export function savePitch(input: PitchInput): Pitch {
 
 export function updatePitch(id: PitchId, partial: Partial<PitchInput>): Pitch | undefined {
   const now = new Date().toISOString();
-  const next = read().map((p) =>
-    p.id === id ? { ...p, ...partial, updatedAt: now } : p
-  );
+  const next = read().map((p) => {
+    if (p.id !== id) return p;
+    const merged: Pitch = { ...p, ...partial, updatedAt: now };
+    // Maintain hero fallback from photos if not explicitly set
+    if (!merged.heroImageUrl && merged.photos?.length) {
+      merged.heroImageUrl = merged.photos[0];
+    }
+    return merged;
+  });
   write(next);
   return next.find((p) => p.id === id);
 }

@@ -8,11 +8,16 @@ import { Card } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { savePitch } from '@/lib/storage';
 import type { PitchInput } from '@/types/pitch';
+import GoogleMapEmbed from '@/components/GoogleMapEmbed';
 
 const inputClass =
   'w-full rounded-2xl border border-ink-200 bg-white px-3 py-2 text-ink-900 placeholder-ink-400 outline-none focus:ring-2 focus:ring-brand-500';
 const labelClass = 'text-sm text-ink-700';
 const helpClass = 'text-xs text-ink-500';
+
+const MAX_PHOTOS = 6;           // keep localStorage size reasonable
+const MAX_DIM = 1600;           // resize longest edge
+const JPEG_QUALITY = 0.85;      // compress a bit
 
 export default function CreatePitchPage() {
   const router = useRouter();
@@ -41,8 +46,10 @@ export default function CreatePitchPage() {
   const [aboutYou, setAboutYou] = React.useState('');
   const [household, setHousehold] = React.useState('');
 
-  const [photoUrl, setPhotoUrl] = React.useState('');
   const [photos, setPhotos] = React.useState<string[]>([]);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = React.useState(false);
+  const [uploadError, setUploadError] = React.useState<string | null>(null);
 
   const [residentName, setResidentName] = React.useState('');
   const [residentEmail, setResidentEmail] = React.useState('');
@@ -55,10 +62,29 @@ export default function CreatePitchPage() {
     }
   }, [valuation, equityPct]);
 
-  function onAddPhoto() {
-    if (!photoUrl.trim()) return;
-    setPhotos((arr) => [photoUrl.trim(), ...arr]);
-    setPhotoUrl('');
+  function removePhoto(idx: number) {
+    setPhotos((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  async function handleFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploadError(null);
+    setUploading(true);
+    try {
+      const toAdd: string[] = [];
+      for (const file of Array.from(files)) {
+        const dataUrl = await downscaleToDataURL(file, MAX_DIM, JPEG_QUALITY);
+        toAdd.push(dataUrl);
+        if (photos.length + toAdd.length >= MAX_PHOTOS) break;
+      }
+      if (toAdd.length === 0) return;
+      setPhotos((prev) => [...toAdd, ...prev].slice(0, MAX_PHOTOS));
+    } catch (e) {
+      setUploadError('Unable to process one or more images. Try smaller files.');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   }
 
   function onSubmit(e: React.FormEvent) {
@@ -75,17 +101,18 @@ export default function CreatePitchPage() {
       amountSeeking: Number(amountSeeking) || 0,
       valuation: Number(valuation) || 0,
       minInvestment: Number(minInvestment) || 0,
+      photos: photos.length ? photos : undefined,
       heroImageUrl: photos[0] || undefined,
       residentName: residentName.trim(),
       residentEmail: residentEmail.trim(),
       status: 'submitted',
-      // NOTE: zillowUrl, mlsUrl, aboutYou, household, photos[] are currently
-      // auxiliary—keep in state/UI; you can persist later if/when the schema extends.
     };
 
     savePitch(clean);
     router.push('/resident/dashboard');
   }
+
+  const addressQuery = [address1, city, state, postalCode].filter(Boolean).join(', ');
 
   return (
     <Section className="max-w-6xl mx-auto py-10">
@@ -266,69 +293,41 @@ export default function CreatePitchPage() {
             </Card>
 
             <Card className="p-6">
-              <h2 className="text-lg font-semibold text-ink-900 mb-4">Your Pitch & Goals</h2>
-              <div className="grid gap-4">
-                <label className="grid gap-2">
-                  <span className={labelClass}>Tell investors why this home</span>
-                  <textarea
-                    className={`${inputClass} min-h-[120px]`}
-                    value={pitchWhy}
-                    onChange={(e) => setPitchWhy(e.target.value)}
-                    placeholder="Why this home, what you'll improve, and what success looks like."
-                  />
-                </label>
-
-                <label className="grid gap-2">
-                  <span className={labelClass}>Your Story / Improvements Plan</span>
-                  <textarea
-                    className={`${inputClass} min-h-[120px]`}
-                    value={story}
-                    onChange={(e) => setStory(e.target.value)}
-                    placeholder="Background, work, interests, improvement plan..."
-                  />
-                </label>
-
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <label className="grid gap-2">
-                    <span className={labelClass}>About You</span>
-                    <textarea
-                      className={`${inputClass} min-h-[96px]`}
-                      value={aboutYou}
-                      onChange={(e) => setAboutYou(e.target.value)}
-                      placeholder="Short bio"
-                    />
-                  </label>
-                  <label className="grid gap-2">
-                    <span className={labelClass}>Family / Household</span>
-                    <textarea
-                      className={`${inputClass} min-h-[96px]`}
-                      value={household}
-                      onChange={(e) => setHousehold(e.target.value)}
-                      placeholder="Who will live here? Any special needs?"
-                    />
-                  </label>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-6">
               <h2 className="text-lg font-semibold text-ink-900 mb-4">Photos</h2>
-              <div className="flex gap-3">
-                <input
-                  className={`${inputClass} flex-1`}
-                  value={photoUrl}
-                  onChange={(e) => setPhotoUrl(e.target.value)}
-                  placeholder="Paste image URL and click Add"
-                />
-                <Button type="button" onClick={onAddPhoto}>Add</Button>
+
+              <div className="grid gap-3">
+                <div className="flex items-center gap-3">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => handleFiles(e.currentTarget.files)}
+                    className="block w-full text-sm text-ink-700 file:mr-4 file:rounded-xl file:border-0 file:bg-ink-100 file:px-4 file:py-2 file:text-ink-900 hover:file:bg-ink-200"
+                  />
+                  <span className={helpClass}>
+                    Up to {MAX_PHOTOS} images. We’ll resize/compress in the browser.
+                  </span>
+                </div>
+
+                {uploading && <p className={helpClass}>Processing images…</p>}
+                {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
               </div>
 
               {photos.length > 0 && (
                 <ul className="mt-4 grid sm:grid-cols-3 gap-3">
                   {photos.map((url, i) => (
-                    <li key={i} className="rounded-2xl overflow-hidden border border-ink-200">
+                    <li key={i} className="group relative rounded-2xl overflow-hidden border border-ink-200">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={url} alt={`Photo ${i + 1}`} className="w-full h-32 object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => removePhoto(i)}
+                        className="absolute top-2 right-2 rounded-full bg-white/90 px-2 py-1 text-xs text-ink-800 shadow hover:bg-white"
+                        title="Remove"
+                      >
+                        Remove
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -366,6 +365,11 @@ export default function CreatePitchPage() {
                   <dd className="text-ink-900">{photos.length}</dd>
                 </div>
               </dl>
+
+              {/* Live map preview */}
+              <div className="mt-4">
+                <GoogleMapEmbed query={addressQuery} height={180} zoom={14} />
+              </div>
 
               <div className="mt-6 flex gap-3">
                 <Button type="submit">Submit Pitch</Button>
@@ -410,4 +414,40 @@ export default function CreatePitchPage() {
       </form>
     </Section>
   );
+}
+
+/**
+ * Resize and compress an image File into a JPEG data URL.
+ * Keeps aspect ratio; longest edge limited to `maxDim`.
+ */
+function downscaleToDataURL(file: File, maxDim: number, quality: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const blobUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > height && width > maxDim) {
+        height = Math.round((height * maxDim) / width);
+        width = maxDim;
+      } else if (height >= width && height > maxDim) {
+        width = Math.round((width * maxDim) / height);
+        height = maxDim;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        URL.revokeObjectURL(blobUrl);
+        reject(new Error('Canvas not supported'));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL('image/jpeg', quality);
+      URL.revokeObjectURL(blobUrl);
+      resolve(dataUrl);
+    };
+    img.onerror = reject;
+    img.src = blobUrl;
+  });
 }
