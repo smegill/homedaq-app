@@ -1,40 +1,116 @@
-export type Pitch = {
-  id: string;
-  address: string;
-  city: string;
-  state: string;
-  zip: string;
-  estimatedValue: string;
-  equityPercent: string;
-  zillowLink: string;
-  photos: string[];
-  personalStory: string;
-  goals: string;
-  buybackPlan: string;
-};
+'use client';
 
-const STORAGE_KEY = "homedaq_pitches";
+import { Pitch, PitchId, PitchInput } from '@/types/pitch';
 
-export function getPitches(): Pitch[] {
-  if (typeof window === "undefined") return [];
-  const data = localStorage.getItem(STORAGE_KEY);
-  return data ? JSON.parse(data) : [];
+// LocalStorage keys
+const KEY = 'homedaq:pitches:v1';
+
+// Simple in-memory cache to reduce JSON work
+let cache: Pitch[] | null = null;
+
+// Seed one example pitch on first run so pages have something to render
+const SAMPLE: Pitch[] = [
+  {
+    id: 'seed-001',
+    title: 'Sunny Bungalow on Maple',
+    summary: '2-bed starter home near city park. Light renovation, strong rental comps.',
+    address1: '123 Maple St',
+    city: 'Wilmington',
+    state: 'DE',
+    postalCode: '19801',
+    amountSeeking: 85000,
+    valuation: 275000,
+    minInvestment: 500,
+    residentName: 'Alex Johnson',
+    residentEmail: 'alex@example.com',
+    status: 'submitted',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+];
+
+function isBrowser() {
+  return typeof window !== 'undefined';
 }
 
-export function savePitch(pitch: Pitch) {
-  const pitches = getPitches();
-  const existingIndex = pitches.findIndex((p) => p.id === pitch.id);
-
-  if (existingIndex !== -1) {
-    pitches[existingIndex] = pitch;
-  } else {
-    pitches.push(pitch);
+function read(): Pitch[] {
+  if (!isBrowser()) return cache ?? [];
+  if (cache) return cache;
+  const raw = window.localStorage.getItem(KEY);
+  if (!raw) {
+    window.localStorage.setItem(KEY, JSON.stringify(SAMPLE));
+    cache = SAMPLE.slice();
+    return cache;
   }
-
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(pitches));
+  try {
+    const parsed = JSON.parse(raw) as Pitch[];
+    cache = Array.isArray(parsed) ? parsed : [];
+    return cache;
+  } catch {
+    cache = [];
+    return cache;
+  }
 }
 
-export function deletePitch(id: string) {
-  const pitches = getPitches().filter((p) => p.id !== id);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(pitches));
+function write(pitches: Pitch[]) {
+  cache = pitches.slice();
+  if (isBrowser()) {
+    window.localStorage.setItem(KEY, JSON.stringify(cache));
+    // Broadcast a custom event so any page can refresh immediately
+    window.dispatchEvent(new CustomEvent('homedaq:pitches:changed'));
+  }
+}
+
+function uid(): PitchId {
+  return 'p_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+}
+
+export function listPitches(): Pitch[] {
+  return read().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export function getPitch(id: PitchId): Pitch | undefined {
+  return read().find(p => p.id === id);
+}
+
+export function createPitch(input: PitchInput): Pitch {
+  const now = new Date().toISOString();
+  const pitch: Pitch = {
+    id: uid(),
+    createdAt: now,
+    updatedAt: now,
+    ...input,
+  };
+  const next = [pitch, ...read()];
+  write(next);
+  return pitch;
+}
+
+export function updatePitch(id: PitchId, partial: Partial<PitchInput>): Pitch | undefined {
+  const now = new Date().toISOString();
+  const next = read().map(p =>
+    p.id === id ? { ...p, ...partial, updatedAt: now } : p
+  );
+  write(next);
+  return next.find(p => p.id === id);
+}
+
+export function deletePitch(id: PitchId): void {
+  const next = read().filter(p => p.id !== id);
+  write(next);
+}
+
+// Subscribe to changes across tabs or programmatic writes
+export function subscribe(onChange: () => void): () => void {
+  if (!isBrowser()) return () => {};
+  const localHandler = () => onChange();
+  const storageHandler = (e: StorageEvent) => {
+    if (e.key === KEY) onChange();
+  };
+  window.addEventListener('homedaq:pitches:changed', localHandler);
+  window.addEventListener('storage', storageHandler);
+  return () => {
+    window.removeEventListener('homedaq:pitches:changed', localHandler);
+    window.removeEventListener('storage', storageHandler);
+  };
 }
