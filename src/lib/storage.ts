@@ -1,14 +1,15 @@
 'use client';
 
 import { Pitch, PitchId, PitchInput } from '@/types/pitch';
+export type { Pitch, PitchId, PitchInput };
 
-// LocalStorage keys
+// LocalStorage key
 const KEY = 'homedaq:pitches:v1';
 
-// Simple in-memory cache to reduce JSON work
+// In-memory cache
 let cache: Pitch[] | null = null;
 
-// Seed one example pitch on first run so pages have something to render
+// Seed example so first run has something to render
 const SAMPLE: Pitch[] = [
   {
     id: 'seed-001',
@@ -56,7 +57,7 @@ function write(pitches: Pitch[]) {
   cache = pitches.slice();
   if (isBrowser()) {
     window.localStorage.setItem(KEY, JSON.stringify(cache));
-    // Broadcast a custom event so any page can refresh immediately
+    // Notify any listeners (and other tabs)
     window.dispatchEvent(new CustomEvent('homedaq:pitches:changed'));
   }
 }
@@ -69,8 +70,13 @@ export function listPitches(): Pitch[] {
   return read().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
+// Back-compat alias for pages that import { getPitches }
+export function getPitches(): Pitch[] {
+  return listPitches();
+}
+
 export function getPitch(id: PitchId): Pitch | undefined {
-  return read().find(p => p.id === id);
+  return read().find((p) => p.id === id);
 }
 
 export function createPitch(input: PitchInput): Pitch {
@@ -86,17 +92,22 @@ export function createPitch(input: PitchInput): Pitch {
   return pitch;
 }
 
+// Back-compat alias for pages that import { savePitch }
+export function savePitch(input: PitchInput): Pitch {
+  return createPitch(input);
+}
+
 export function updatePitch(id: PitchId, partial: Partial<PitchInput>): Pitch | undefined {
   const now = new Date().toISOString();
-  const next = read().map(p =>
+  const next = read().map((p) =>
     p.id === id ? { ...p, ...partial, updatedAt: now } : p
   );
   write(next);
-  return next.find(p => p.id === id);
+  return next.find((p) => p.id === id);
 }
 
 export function deletePitch(id: PitchId): void {
-  const next = read().filter(p => p.id !== id);
+  const next = read().filter((p) => p.id !== id);
   write(next);
 }
 
