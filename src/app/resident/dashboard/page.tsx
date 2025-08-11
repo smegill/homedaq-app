@@ -1,64 +1,96 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
-import { getPitches, deletePitch, Pitch } from "@/lib/storage";
+import * as React from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import Section from '@/components/ui/Section';      // default export
+import { Card } from '@/components/ui/Card';        // named export
+import Button from '@/components/ui/Button';        // default export
+import { listPitches, deletePitch, subscribe } from '@/lib/storage';
+import type { Pitch } from '@/types/pitch';
 
-export default function ResidentDashboard() {
-  const [pitches, setPitches] = useState<Pitch[]>([]);
+function formatCurrency(n: number) {
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+      .format(Number.isFinite(n) ? n : 0);
+  } catch {
+    return `$${Math.round(n).toLocaleString()}`;
+  }
+}
 
-  useEffect(() => {
-    setPitches(getPitches());
+export default function ResidentDashboardPage() {
+  const router = useRouter();
+  const [pitches, setPitches] = React.useState<Pitch[]>([]);
+
+  React.useEffect(() => {
+    setPitches(listPitches());
+    const unsub = subscribe(() => setPitches(listPitches()));
+    return unsub;
   }, []);
 
   const handleDelete = (id: string) => {
-    if (confirm("Delete this pitch?")) {
-      deletePitch(id);
-      setPitches(getPitches());
-    }
+    if (!window.confirm('Delete this pitch? This cannot be undone.')) return;
+    deletePitch(id);
+    setPitches(listPitches());
   };
 
   return (
-    <>
-      <section className="section text-center">
-        <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-gray-900">
-          Your Pitches
-        </h1>
-        <p className="mt-3 text-gray-600">Manage, edit, or remove your submissions.</p>
-      </section>
+    <Section className="max-w-5xl mx-auto py-10">
+      <div className="mb-8 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold text-ink-900">Your Pitches</h1>
+        <Link href="/resident/create">
+          <Button>New Pitch</Button>
+        </Link>
+      </div>
 
-      <section className="section">
-        {pitches.length === 0 ? (
-          <p className="text-center text-gray-600">No pitches yet.</p>
-        ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {pitches.map((pitch) => (
-              <div key={pitch.id} className="card">
-                <div className="card-pad">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h2 className="text-lg font-semibold">
-                        {pitch.address}, {pitch.city}
-                      </h2>
-                      <p className="text-sm text-gray-500">
-                        ${pitch.estimatedValue} • {pitch.equityPercent}% equity
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => handleDelete(pitch.id)}
-                      className="text-sm text-red-600 hover:underline"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                  <p className="text-gray-700 text-sm mt-3">
-                    {pitch.personalStory.substring(0, 140)}...
-                  </p>
+      {pitches.length === 0 ? (
+        <Card className="p-8 text-center">
+          <h2 className="text-xl font-medium text-ink-900 mb-2">No pitches yet</h2>
+          <p className="text-ink-600 mb-6">
+            Create your first pitch to start raising capital on HomeDAQ.
+          </p>
+          <Link href="/resident/create">
+            <Button>Create a Pitch</Button>
+          </Link>
+        </Card>
+      ) : (
+        <div className="grid gap-6 sm:grid-cols-2">
+          {pitches.map((p) => (
+            <Card key={p.id} className="p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-ink-900">{p.title}</h3>
+                  <p className="text-sm text-ink-600 mt-1">{p.summary}</p>
                 </div>
+                <span className="rounded-full bg-ink-100 text-ink-700 px-3 py-1 text-xs">
+                  {p.status}
+                </span>
               </div>
-            ))}
-          </div>
-        )}
-      </section>
-    </>
+
+              <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                <div className="text-ink-500">Location</div>
+                <div className="text-ink-900">
+                  {p.city}, {p.state} {p.postalCode}
+                </div>
+                <div className="text-ink-500">Seeking</div>
+                <div className="text-ink-900">{formatCurrency(p.amountSeeking)}</div>
+                <div className="text-ink-500">Min Investment</div>
+                <div className="text-ink-900">{formatCurrency(p.minInvestment)}</div>
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Link href={`/resident/edit/${p.id}`}>
+                  <Button>Edit</Button>
+                </Link>
+                <Link href={`/invest?preview=${encodeURIComponent(p.id)}`}>
+                  <Button>Preview</Button>
+                </Link>
+                <Button onClick={() => handleDelete(p.id)}>Delete</Button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </Section>
   );
 }
