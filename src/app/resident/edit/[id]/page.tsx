@@ -3,11 +3,15 @@
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Section from '@/components/ui/Section';      // default export
+import Section from '@/components/ui/Section';
 import { Card } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { getPitch, updatePitch } from '@/lib/storage';
 import type { PitchInput } from '@/types/pitch';
+
+const inputClass =
+  'w-full rounded-2xl border border-ink-200 bg-white px-3 py-2 text-ink-900 placeholder-ink-400 outline-none focus:ring-2 focus:ring-brand-500';
+const labelClass = 'text-sm text-ink-700';
 
 export default function EditPitchPage() {
   const router = useRouter();
@@ -75,19 +79,14 @@ export default function EditPitchPage() {
         <form onSubmit={onSubmit} className="space-y-6">
           <div className="grid gap-4">
             <label className="grid gap-2">
-              <span className="text-sm text-ink-700">Title</span>
-              <input
-                className="w-full rounded-2xl border border-ink-200 bg-white px-3 py-2 text-ink-900 outline-none focus:ring-2 focus:ring-brand-500"
-                value={form.title}
-                onChange={onChange('title')}
-                required
-              />
+              <span className={labelClass}>Title</span>
+              <input className={inputClass} value={form.title} onChange={onChange('title')} required />
             </label>
 
             <label className="grid gap-2">
-              <span className="text-sm text-ink-700">Summary</span>
+              <span className={labelClass}>Summary</span>
               <textarea
-                className="min-h-[96px] w-full rounded-2xl border border-ink-200 bg-white px-3 py-2 text-ink-900 outline-none focus:ring-2 focus:ring-brand-500"
+                className={`${inputClass} min-h-[96px]`}
                 value={form.summary}
                 onChange={onChange('summary')}
                 required
@@ -96,80 +95,56 @@ export default function EditPitchPage() {
 
             <div className="grid sm:grid-cols-2 gap-4">
               <label className="grid gap-2">
-                <span className="text-sm text-ink-700">Address 1</span>
-                <input
-                  className="w-full rounded-2xl border border-ink-200 bg-white px-3 py-2 text-ink-900 outline-none focus:ring-2 focus:ring-brand-500"
-                  value={form.address1}
-                  onChange={onChange('address1')}
-                  required
-                />
+                <span className={labelClass}>Address 1</span>
+                <input className={inputClass} value={form.address1} onChange={onChange('address1')} required />
               </label>
               <label className="grid gap-2">
-                <span className="text-sm text-ink-700">Address 2</span>
-                <input
-                  className="w-full rounded-2xl border border-ink-200 bg-white px-3 py-2 text-ink-900 outline-none focus:ring-2 focus:ring-brand-500"
-                  value={form.address2 ?? ''}
-                  onChange={onChange('address2')}
-                />
+                <span className={labelClass}>Address 2</span>
+                <input className={inputClass} value={form.address2 ?? ''} onChange={onChange('address2')} />
               </label>
               <label className="grid gap-2">
-                <span className="text-sm text-ink-700">City</span>
-                <input
-                  className="w-full rounded-2xl border border-ink-200 bg-white px-3 py-2 text-ink-900 outline-none focus:ring-2 focus:ring-brand-500"
-                  value={form.city}
-                  onChange={onChange('city')}
-                  required
-                />
+                <span className={labelClass}>City</span>
+                <input className={inputClass} value={form.city} onChange={onChange('city')} required />
               </label>
               <label className="grid gap-2">
-                <span className="text-sm text-ink-700">State</span>
-                <input
-                  className="w-full rounded-2xl border border-ink-200 bg-white px-3 py-2 text-ink-900 outline-none focus:ring-2 focus:ring-brand-500"
-                  value={form.state}
-                  onChange={onChange('state')}
-                  required
-                />
+                <span className={labelClass}>State</span>
+                <input className={inputClass} value={form.state} onChange={onChange('state')} required />
               </label>
               <label className="grid gap-2">
-                <span className="text-sm text-ink-700">Postal Code</span>
-                <input
-                  className="w-full rounded-2xl border border-ink-200 bg-white px-3 py-2 text-ink-900 outline-none focus:ring-2 focus:ring-brand-500"
-                  value={form.postalCode}
-                  onChange={onChange('postalCode')}
-                  required
-                />
+                <span className={labelClass}>Postal Code</span>
+                <input className={inputClass} value={form.postalCode} onChange={onChange('postalCode')} required />
               </label>
             </div>
 
             <div className="grid sm:grid-cols-3 gap-4">
               <label className="grid gap-2">
-                <span className="text-sm text-ink-700">Amount Seeking (USD)</span>
+                <span className={labelClass}>Amount Seeking (USD)</span>
                 <input
                   type="number"
                   min={0}
-                  className="w-full rounded-2xl border border-ink-200 bg-white px-3 py-2 text-ink-900 outline-none focus:ring-2 focus:ring-brand-500"
+                  className={inputClass}
                   value={form.amountSeeking}
                   onChange={onChange('amountSeeking')}
                   required
                 />
               </label>
               <label className="grid gap-2">
-                <span className="text-sm text-ink-700">Valuation (USD)</span>
+                <span className={labelClass}>Valuation (USD)</span>
                 <input
                   type="number"
                   min={0}
-                  className="w-full rounded-2xl border border-ink-200 bg-white px-3 py-2 text-ink-900 outline-none focus:ring-2 focus:ring-brand-500"
+                  className={inputClass}
                   value={form.valuation}
                   onChange={onChange('valuation')}
                   required
                 />
               </label>
               <label className="grid gap-2">
-                <span className="text-sm text-ink-700">Min Investment (USD)</span>
+                <span className={labelClass}>Min Investment (USD)</span>
                 <input
                   type="number"
                   min={0}
-                  className="w-full rounded-2xl border border-ink-200 bg-white px-3 py-2 text-ink-900 outline-none focus:ring-2 focus:ring-brand-500"
+                  className={inputClass}
                   value={form.minInvestment}
                   onChange={onChange('minInvestment')}
                   required
@@ -179,19 +154,14 @@ export default function EditPitchPage() {
 
             <div className="grid sm:grid-cols-2 gap-4">
               <label className="grid gap-2">
-                <span className="text-sm text-ink-700">Resident Name</span>
-                <input
-                  className="w-full rounded-2xl border border-ink-200 bg-white px-3 py-2 text-ink-900 outline-none focus:ring-2 focus:ring-brand-500"
-                  value={form.residentName}
-                  onChange={onChange('residentName')}
-                  required
-                />
+                <span className={labelClass}>Resident Name</span>
+                <input className={inputClass} value={form.residentName} onChange={onChange('residentName')} required />
               </label>
               <label className="grid gap-2">
-                <span className="text-sm text-ink-700">Resident Email</span>
+                <span className={labelClass}>Resident Email</span>
                 <input
                   type="email"
-                  className="w-full rounded-2xl border border-ink-200 bg-white px-3 py-2 text-ink-900 outline-none focus:ring-2 focus:ring-brand-500"
+                  className={inputClass}
                   value={form.residentEmail}
                   onChange={onChange('residentEmail')}
                   required

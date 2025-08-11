@@ -4,16 +4,15 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Section from '@/components/ui/Section';      // default export
-import { Card } from '@/components/ui/Card';
-import Button from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';        // named export
+import Button from '@/components/ui/Button';        // default export
 import { listPitches, deletePitch, subscribe } from '@/lib/storage';
 import type { Pitch } from '@/types/pitch';
 
 function formatCurrency(n: number) {
   try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(
-      Number.isFinite(n) ? n : 0
-    );
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+      .format(Number.isFinite(n) ? n : 0);
   } catch {
     return `$${Math.round(n).toLocaleString()}`;
   }
@@ -30,8 +29,7 @@ export default function ResidentDashboardPage() {
   }, []);
 
   const handleDelete = (id: string) => {
-    const ok = window.confirm('Delete this pitch? This cannot be undone.');
-    if (!ok) return;
+    if (!window.confirm('Delete this pitch? This cannot be undone.')) return;
     deletePitch(id);
     setPitches(listPitches());
   };
@@ -84,11 +82,9 @@ export default function ResidentDashboardPage() {
                 <Link href={`/resident/edit/${p.id}`}>
                   <Button>Edit</Button>
                 </Link>
-
                 <Link href={`/invest?preview=${encodeURIComponent(p.id)}`}>
                   <Button>Preview</Button>
                 </Link>
-
                 <Button onClick={() => handleDelete(p.id)}>Delete</Button>
               </div>
             </Card>

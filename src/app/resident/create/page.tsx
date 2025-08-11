@@ -1,251 +1,413 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import Section, { SectionContainer, SectionTitle } from "@/components/ui/Section";
-import { Card, CardBody } from "@/components/ui/Card";
-import Button from "@/components/ui/Button";
-import { savePitch } from "@/lib/storage";
+import * as React from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import Section from '@/components/ui/Section';
+import { Card } from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import { savePitch } from '@/lib/storage';
+import type { PitchInput } from '@/types/pitch';
+
+const inputClass =
+  'w-full rounded-2xl border border-ink-200 bg-white px-3 py-2 text-ink-900 placeholder-ink-400 outline-none focus:ring-2 focus:ring-brand-500';
+const labelClass = 'text-sm text-ink-700';
+const helpClass = 'text-xs text-ink-500';
 
 export default function CreatePitchPage() {
   const router = useRouter();
 
-  const [form, setForm] = useState({
-    address: "",
-    city: "",
-    estimatedValue: "",
-    equityPercent: "",
-    zillowLink: "",
-    mlsLink: "",
-    personalStory: "",
-    aboutYou: "",
-    family: "",
-    photos: [] as string[],
-  });
+  // Core schema (maps cleanly to PitchInput)
+  const [title, setTitle] = React.useState('');
+  const [summary, setSummary] = React.useState('');
 
-  function update<K extends keyof typeof form>(key: K, val: (typeof form)[K]) {
-    setForm((f) => ({ ...f, [key]: val }));
-  }
+  const [address1, setAddress1] = React.useState('');
+  const [address2, setAddress2] = React.useState('');
+  const [city, setCity] = React.useState('');
+  const [state, setState] = React.useState('');
+  const [postalCode, setPostalCode] = React.useState('');
 
-  function addPhoto(url: string) {
-    if (!url) return;
-    setForm((f) => ({ ...f, photos: [...f.photos, url] }));
-  }
+  const [valuation, setValuation] = React.useState<number | ''>('');
+  const [equityPct, setEquityPct] = React.useState<number | ''>(''); // optional helper
+  const [amountSeeking, setAmountSeeking] = React.useState<number | ''>('');
+  const [minInvestment, setMinInvestment] = React.useState<number | ''>('');
 
-  function removePhoto(idx: number) {
-    setForm((f) => ({ ...f, photos: f.photos.filter((_, i) => i !== idx) }));
+  // Optional/extended fields
+  const [zillowUrl, setZillowUrl] = React.useState('');
+  const [mlsUrl, setMlsUrl] = React.useState('');
+
+  const [pitchWhy, setPitchWhy] = React.useState('');
+  const [story, setStory] = React.useState('');
+  const [aboutYou, setAboutYou] = React.useState('');
+  const [household, setHousehold] = React.useState('');
+
+  const [photoUrl, setPhotoUrl] = React.useState('');
+  const [photos, setPhotos] = React.useState<string[]>([]);
+
+  const [residentName, setResidentName] = React.useState('');
+  const [residentEmail, setResidentEmail] = React.useState('');
+
+  // Derive seeking from valuation * equity% if both provided (user can still override)
+  React.useEffect(() => {
+    if (valuation !== '' && equityPct !== '') {
+      const calc = Math.max(0, Math.round((Number(valuation) * Number(equityPct)) / 100));
+      setAmountSeeking((prev) => (prev === '' ? calc : prev)); // don’t clobber once user edits
+    }
+  }, [valuation, equityPct]);
+
+  function onAddPhoto() {
+    if (!photoUrl.trim()) return;
+    setPhotos((arr) => [photoUrl.trim(), ...arr]);
+    setPhotoUrl('');
   }
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // Basic validation
-    if (!form.address) return alert("Please enter the property address.");
-    const payload: any = {
-      ...form,
-      estimatedValue: Number(form.estimatedValue || 0),
-      equityPercent: Number(form.equityPercent || 0),
-      createdAt: Date.now(),
+
+    const clean: PitchInput = {
+      title: title.trim() || (address1 ? `Pitch: ${address1}` : 'My HomeDAQ Pitch'),
+      summary: summary.trim() || pitchWhy.trim() || story.trim() || 'Home investment opportunity',
+      address1: address1.trim(),
+      address2: address2.trim() || undefined,
+      city: city.trim(),
+      state: state.trim(),
+      postalCode: postalCode.trim(),
+      amountSeeking: Number(amountSeeking) || 0,
+      valuation: Number(valuation) || 0,
+      minInvestment: Number(minInvestment) || 0,
+      heroImageUrl: photos[0] || undefined,
+      residentName: residentName.trim(),
+      residentEmail: residentEmail.trim(),
+      status: 'submitted',
+      // NOTE: zillowUrl, mlsUrl, aboutYou, household, photos[] are currently
+      // auxiliary—keep in state/UI; you can persist later if/when the schema extends.
     };
-    savePitch(payload);
-    router.push("/resident/dashboard");
+
+    savePitch(clean);
+    router.push('/resident/dashboard');
   }
 
   return (
-    <Section>
-      <SectionContainer>
-        <SectionTitle>Create Your Pitch</SectionTitle>
-        <form onSubmit={onSubmit} className="grid gap-6 lg:grid-cols-3">
-          {/* Left column */}
-          <div className="lg:col-span-2 grid gap-6">
+    <Section className="max-w-6xl mx-auto py-10">
+      <h1 className="text-3xl font-semibold text-ink-900 text-center mb-8">Create Your Pitch</h1>
 
-            <Card>
-              <CardBody>
-                <h3 className="text-lg font-semibold text-brand-700 mb-3">Property</h3>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="label">Address</label>
-                    <input
-                      className="input"
-                      value={form.address}
-                      onChange={(e) => update("address", e.target.value)}
-                      placeholder="123 Main St"
-                    />
-                  </div>
-                  <div>
-                    <label className="label">City</label>
-                    <input
-                      className="input"
-                      value={form.city}
-                      onChange={(e) => update("city", e.target.value)}
-                      placeholder="Austin"
-                    />
-                  </div>
-                  <div>
-                    <label className="label">Estimated Value (USD)</label>
-                    <input
-                      className="input"
-                      type="number"
-                      value={form.estimatedValue}
-                      onChange={(e) => update("estimatedValue", e.target.value)}
-                      placeholder="400000"
-                    />
-                  </div>
-                  <div>
-                    <label className="label">Equity Offered (%)</label>
-                    <input
-                      className="input"
-                      type="number"
-                      value={form.equityPercent}
-                      onChange={(e) => update("equityPercent", e.target.value)}
-                      placeholder="15"
-                    />
-                  </div>
-                  <div>
-                    <label className="label">Zillow Link (optional)</label>
-                    <input
-                      className="input"
-                      value={form.zillowLink}
-                      onChange={(e) => update("zillowLink", e.target.value)}
-                      placeholder="https://www.zillow.com/homedetails/..."
-                    />
-                  </div>
-                  <div>
-                    <label className="label">MLS Link (optional)</label>
-                    <input
-                      className="input"
-                      value={form.mlsLink}
-                      onChange={(e) => update("mlsLink", e.target.value)}
-                      placeholder="https://www.mls.com/listing/..."
-                    />
-                  </div>
-                </div>
-              </CardBody>
+      <form onSubmit={onSubmit}>
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* LEFT COLUMN */}
+          <div className="lg:col-span-2 space-y-6">
+            <Card className="p-6">
+              <h2 className="text-lg font-semibold text-ink-900 mb-4">Basics</h2>
+              <div className="grid gap-4">
+                <label className="grid gap-2">
+                  <span className={labelClass}>Listing Title</span>
+                  <input
+                    className={inputClass}
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Sunny Bungalow on Maple"
+                  />
+                </label>
+
+                <label className="grid gap-2">
+                  <span className={labelClass}>Short Summary</span>
+                  <textarea
+                    className={`${inputClass} min-h-[96px]`}
+                    value={summary}
+                    onChange={(e) => setSummary(e.target.value)}
+                    placeholder="2-bed starter home near city park. Light renovation, strong rental comps."
+                  />
+                </label>
+              </div>
             </Card>
 
-            <Card>
-              <CardBody>
-                <h3 className="text-lg font-semibold text-brand-700 mb-3">Your Pitch & Goals</h3>
-                <div className="grid gap-4">
-                  <div>
-                    <label className="label">Your Story / Improvements Plan</label>
+            <Card className="p-6">
+              <h2 className="text-lg font-semibold text-ink-900 mb-4">Property</h2>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="grid gap-2">
+                  <span className={labelClass}>Address</span>
+                  <input
+                    className={inputClass}
+                    value={address1}
+                    onChange={(e) => setAddress1(e.target.value)}
+                    placeholder="123 Main St"
+                    required
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className={labelClass}>Address 2</span>
+                  <input
+                    className={inputClass}
+                    value={address2}
+                    onChange={(e) => setAddress2(e.target.value)}
+                    placeholder="Apt, Unit, Suite (optional)"
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className={labelClass}>City</span>
+                  <input
+                    className={inputClass}
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    placeholder="Austin"
+                    required
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className={labelClass}>State</span>
+                  <input
+                    className={inputClass}
+                    value={state}
+                    onChange={(e) => setState(e.target.value)}
+                    placeholder="TX"
+                    required
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className={labelClass}>Postal Code</span>
+                  <input
+                    className={inputClass}
+                    value={postalCode}
+                    onChange={(e) => setPostalCode(e.target.value)}
+                    placeholder="73301"
+                    required
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 mt-4">
+                <label className="grid gap-2">
+                  <span className={labelClass}>Estimated Value (USD)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1000}
+                    className={inputClass}
+                    value={valuation}
+                    onChange={(e) => setValuation(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="400000"
+                  />
+                  <span className={helpClass}>Use your best estimate or a recent appraisal.</span>
+                </label>
+                <label className="grid gap-2">
+                  <span className={labelClass}>Equity Offered (%)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    className={inputClass}
+                    value={equityPct}
+                    onChange={(e) => setEquityPct(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="15"
+                  />
+                  <span className={helpClass}>Optional — auto-fills “Amount Seeking” below.</span>
+                </label>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 mt-4">
+                <label className="grid gap-2">
+                  <span className={labelClass}>Zillow Link (optional)</span>
+                  <input
+                    className={inputClass}
+                    value={zillowUrl}
+                    onChange={(e) => setZillowUrl(e.target.value)}
+                    placeholder="https://www.zillow.com/..."
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className={labelClass}>MLS Link (optional)</span>
+                  <input
+                    className={inputClass}
+                    value={mlsUrl}
+                    onChange={(e) => setMlsUrl(e.target.value)}
+                    placeholder="https://www.mls.com/listing/..."
+                  />
+                </label>
+              </div>
+            </Card>
+
+            <Card className="p-6">
+              <h2 className="text-lg font-semibold text-ink-900 mb-4">Raise Details</h2>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <label className="grid gap-2">
+                  <span className={labelClass}>Amount Seeking (USD)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    className={inputClass}
+                    value={amountSeeking}
+                    onChange={(e) => setAmountSeeking(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="45000"
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className={labelClass}>Valuation (USD)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    className={inputClass}
+                    value={valuation}
+                    onChange={(e) => setValuation(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="400000"
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className={labelClass}>Min Investment (USD)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    className={inputClass}
+                    value={minInvestment}
+                    onChange={(e) => setMinInvestment(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="500"
+                  />
+                </label>
+              </div>
+            </Card>
+
+            <Card className="p-6">
+              <h2 className="text-lg font-semibold text-ink-900 mb-4">Your Pitch & Goals</h2>
+              <div className="grid gap-4">
+                <label className="grid gap-2">
+                  <span className={labelClass}>Tell investors why this home</span>
+                  <textarea
+                    className={`${inputClass} min-h-[120px]`}
+                    value={pitchWhy}
+                    onChange={(e) => setPitchWhy(e.target.value)}
+                    placeholder="Why this home, what you'll improve, and what success looks like."
+                  />
+                </label>
+
+                <label className="grid gap-2">
+                  <span className={labelClass}>Your Story / Improvements Plan</span>
+                  <textarea
+                    className={`${inputClass} min-h-[120px]`}
+                    value={story}
+                    onChange={(e) => setStory(e.target.value)}
+                    placeholder="Background, work, interests, improvement plan..."
+                  />
+                </label>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <label className="grid gap-2">
+                    <span className={labelClass}>About You</span>
                     <textarea
-                      className="input"
-                      rows={5}
-                      value={form.personalStory}
-                      onChange={(e) => update("personalStory", e.target.value)}
-                      placeholder="Tell investors why this home, what you’ll improve, and what success looks like."
+                      className={`${inputClass} min-h-[96px]`}
+                      value={aboutYou}
+                      onChange={(e) => setAboutYou(e.target.value)}
+                      placeholder="Short bio"
                     />
-                  </div>
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="label">About You</label>
-                      <textarea
-                        className="input"
-                        rows={4}
-                        value={form.aboutYou}
-                        onChange={(e) => update("aboutYou", e.target.value)}
-                        placeholder="Background, work, interests..."
-                      />
-                    </div>
-                    <div>
-                      <label className="label">Family / Household</label>
-                      <textarea
-                        className="input"
-                        rows={4}
-                        value={form.family}
-                        onChange={(e) => update("family", e.target.value)}
-                        placeholder="Who will live here? Any special needs?"
-                      />
-                    </div>
-                  </div>
+                  </label>
+                  <label className="grid gap-2">
+                    <span className={labelClass}>Family / Household</span>
+                    <textarea
+                      className={`${inputClass} min-h-[96px]`}
+                      value={household}
+                      onChange={(e) => setHousehold(e.target.value)}
+                      placeholder="Who will live here? Any special needs?"
+                    />
+                  </label>
                 </div>
-              </CardBody>
+              </div>
             </Card>
 
-            <Card>
-              <CardBody>
-                <h3 className="text-lg font-semibold text-brand-700 mb-3">Photos</h3>
-                <div className="grid gap-3">
-                  <div className="flex gap-2">
-                    <input
-                      className="input flex-1"
-                      placeholder="Paste image URL and click Add"
-                      onKeyDown={(e) => {
-                        const target = e.target as HTMLInputElement;
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          addPhoto(target.value.trim());
-                          target.value = "";
-                        }
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => {
-                        const el = document.querySelector<HTMLInputElement>("input[placeholder^='Paste image URL']");
-                        if (el && el.value.trim()) {
-                          addPhoto(el.value.trim());
-                          el.value = "";
-                        }
-                      }}
-                    >
-                      Add
-                    </Button>
-                  </div>
+            <Card className="p-6">
+              <h2 className="text-lg font-semibold text-ink-900 mb-4">Photos</h2>
+              <div className="flex gap-3">
+                <input
+                  className={`${inputClass} flex-1`}
+                  value={photoUrl}
+                  onChange={(e) => setPhotoUrl(e.target.value)}
+                  placeholder="Paste image URL and click Add"
+                />
+                <Button type="button" onClick={onAddPhoto}>Add</Button>
+              </div>
 
-                  {form.photos.length > 0 && (
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      {form.photos.map((url, i) => (
-                        <div key={i} className="relative">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={url} alt="Home" className="w-full h-40 object-cover rounded-lg" />
-                          <button
-                            type="button"
-                            onClick={() => removePhoto(i)}
-                            className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </CardBody>
-            </Card>
-          </div>
-
-          {/* Right column - sticky summary */}
-          <div className="lg:col-span-1">
-            <Card>
-              <CardBody>
-                <h3 className="text-lg font-semibold text-ink-800 mb-3">Summary</h3>
-                <ul className="text-sm text-ink-700 space-y-2">
-                  <li><strong>Address:</strong> {form.address || "—"}</li>
-                  <li><strong>City:</strong> {form.city || "—"}</li>
-                  <li><strong>Est. Value:</strong> {form.estimatedValue || "—"}</li>
-                  <li><strong>Equity Offered:</strong> {form.equityPercent || "—"}%</li>
-                  <li><strong>Photos:</strong> {form.photos.length}</li>
+              {photos.length > 0 && (
+                <ul className="mt-4 grid sm:grid-cols-3 gap-3">
+                  {photos.map((url, i) => (
+                    <li key={i} className="rounded-2xl overflow-hidden border border-ink-200">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={url} alt={`Photo ${i + 1}`} className="w-full h-32 object-cover" />
+                    </li>
+                  ))}
                 </ul>
-                <div className="mt-5 flex gap-2">
-                  <Button type="submit">Submit Pitch</Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => history.back()}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-                <p className="text-xs text-ink-500 mt-3">
-                  By submitting, you agree your information may be reviewed by potential investors.
-                </p>
-              </CardBody>
+              )}
             </Card>
           </div>
-        </form>
-      </SectionContainer>
+
+          {/* RIGHT COLUMN */}
+          <aside className="lg:col-span-1 space-y-6">
+            <Card className="p-6">
+              <h2 className="text-lg font-semibold text-ink-900 mb-4">Summary</h2>
+              <dl className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <dt className="text-ink-600">Address:</dt>
+                  <dd className="text-ink-900">{address1 || '—'}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-ink-600">City:</dt>
+                  <dd className="text-ink-900">{city || '—'}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-ink-600">Est. Value:</dt>
+                  <dd className="text-ink-900">
+                    {valuation !== '' ? `$${Number(valuation).toLocaleString()}` : '—'}
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-ink-600">Equity Offered:</dt>
+                  <dd className="text-ink-900">
+                    {equityPct !== '' ? `${equityPct}%` : '—%'}
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-ink-600">Photos:</dt>
+                  <dd className="text-ink-900">{photos.length}</dd>
+                </div>
+              </dl>
+
+              <div className="mt-6 flex gap-3">
+                <Button type="submit">Submit Pitch</Button>
+                <Link href="/resident/dashboard">
+                  <Button type="button">Cancel</Button>
+                </Link>
+              </div>
+
+              <p className="text-ink-500 text-xs mt-4">
+                By submitting, you agree your information may be reviewed by potential investors.
+              </p>
+            </Card>
+
+            <Card className="p-6">
+              <h2 className="text-lg font-semibold text-ink-900 mb-4">Contact</h2>
+              <div className="grid gap-4">
+                <label className="grid gap-2">
+                  <span className={labelClass}>Resident Name</span>
+                  <input
+                    className={inputClass}
+                    value={residentName}
+                    onChange={(e) => setResidentName(e.target.value)}
+                    placeholder="Alex Johnson"
+                    required
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className={labelClass}>Resident Email</span>
+                  <input
+                    type="email"
+                    className={inputClass}
+                    value={residentEmail}
+                    onChange={(e) => setResidentEmail(e.target.value)}
+                    placeholder="alex@example.com"
+                    required
+                  />
+                </label>
+              </div>
+            </Card>
+          </aside>
+        </div>
+      </form>
     </Section>
   );
 }
