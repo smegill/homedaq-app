@@ -1,38 +1,47 @@
-export type PitchId = string;
+// Central types for pitch data used across the app
 
-export type PitchStatus = 'draft' | 'submitted' | 'listed';
+export type PitchStatus = 'draft' | 'submitted' | 'funding' | 'funded' | 'archived';
 
-export interface Pitch {
-  id: PitchId;
-  // Display
+export interface PitchInput {
+  // Core
   title: string;
   summary: string;
 
-  // Property
   address1: string;
   address2?: string;
   city: string;
   state: string;
   postalCode: string;
 
-  // Offer
-  amountSeeking: number;      // total amount to raise, in USD
-  valuation: number;          // pre- or implied property valuation, in USD
-  minInvestment: number;      // minimum ticket size, in USD
+  valuation: number;            // current estimated value (USD)
+  amountSeeking: number;        // raise target (USD)
+  minInvestment: number;        // minimum investment (USD)
 
-  // Media (optional for now)
+  // Links (optional)
+  zillowUrl?: string;
+  mlsUrl?: string;
+
+  // Media
+  photos?: string[];            // data URLs for now
   heroImageUrl?: string;
 
-  // Owner
+  // Contact
   residentName: string;
   residentEmail: string;
 
+  // Status
   status: PitchStatus;
 
-  // Timestamps
-  createdAt: string; // ISO
-  updatedAt: string; // ISO
+  // Resident-controlled “offer knobs”
+  offeredEquityPct?: number;          // % of LLC offered to investors
+  monthlyDividendPct?: number;        // % per month of invested capital (e.g., 0.8)
+  expectedAppreciationPct?: number;   // % per year
+  storyStrength?: number;             // 1–5 (self-assessed)
+  horizonYears?: number;              // illustrative horizon for scenarios
 }
 
-// For create/edit forms; id and timestamps are injected by storage
-export type PitchInput = Omit<Pitch, 'id' | 'createdAt' | 'updatedAt'>;
+export interface Pitch extends PitchInput {
+  id: string;
+  createdAt: number;   // epoch ms
+  updatedAt: number;   // epoch ms
+}
