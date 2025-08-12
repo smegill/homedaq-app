@@ -57,13 +57,11 @@ export default function NavBar() {
   const mobileSheetRef = React.useRef<HTMLDivElement | null>(null);
   useFocusTrap(mobileOpen, mobileSheetRef);
 
-  // Close menus when route changes
   React.useEffect(() => {
     setOpen(null);
     setMobileOpen(false);
   }, [pathname]);
 
-  // Scroll progress underline
   React.useEffect(() => {
     const onScroll = () => {
       const h = document.documentElement;
@@ -301,7 +299,6 @@ function DesktopGroup({
 }
 
 /* ===== Focus trap hook for the mobile sheet ===== */
-
 function useFocusTrap(enabled: boolean, ref: React.RefObject<HTMLElement | null>) {
   React.useEffect(() => {
     if (!enabled || !ref.current) return;
@@ -320,7 +317,6 @@ function useFocusTrap(enabled: boolean, ref: React.RefObject<HTMLElement | null>
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        // Find the mobile toggle button (previous sibling)
         const toggle = document.querySelector<HTMLButtonElement>("nav button.md\\:hidden");
         toggle?.click();
         return;
@@ -336,7 +332,7 @@ function useFocusTrap(enabled: boolean, ref: React.RefObject<HTMLElement | null>
       e.preventDefault();
     };
 
-    root.addEventListener("keydown", onKeyDown as any);
-    return () => root.removeEventListener("keydown", onKeyDown as any);
+    root.addEventListener("keydown", onKeyDown);
+    return () => root.removeEventListener("keydown", onKeyDown);
   }, [enabled, ref]);
 }

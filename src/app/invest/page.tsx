@@ -19,9 +19,9 @@ export default function InvestPage() {
 
   React.useEffect(() => {
     refresh();
-    const onChange = () => refresh();
-    window.addEventListener('homedaq:pitches:changed', onChange as any);
-    return () => window.removeEventListener('homedaq:pitches:changed', onChange as any);
+    const onChange = (_e: Event) => refresh();
+    window.addEventListener('homedaq:pitches:changed', onChange);
+    return () => window.removeEventListener('homedaq:pitches:changed', onChange);
   }, [refresh]);
 
   return (
@@ -51,9 +51,7 @@ export default function InvestPage() {
 
       {pitches.length === 0 ? (
         <Card className="p-8 text-center">
-          <p className="text-ink-700">
-            No listings yet. Be the first to create a pitch.
-          </p>
+          <p className="text-ink-700">No listings yet. Be the first to create a pitch.</p>
           <div className="mt-4">
             <Link href="/resident/create">
               <Button>Create a Pitch</Button>
@@ -74,7 +72,7 @@ export default function InvestPage() {
 /* ----------------- Listing card ----------------- */
 
 function ListingCard({ pitch }: { pitch: Pitch }) {
-  const fit = computeInvestorFit(pitch); // { label, score }
+  const fit = computeInvestorFit(pitch);
   const addressQuery = [pitch.address1, pitch.city, pitch.state, pitch.postalCode]
     .filter(Boolean)
     .join(', ');
@@ -92,7 +90,6 @@ function ListingCard({ pitch }: { pitch: Pitch }) {
             No photo
           </div>
         )}
-        {/* Investor Fit chip */}
         <div className="absolute top-3 left-3">
           <FitChip label={fit.label} />
         </div>
@@ -113,11 +110,8 @@ function ListingCard({ pitch }: { pitch: Pitch }) {
           )}
         </div>
 
-        {/* badges */}
         <div className="mt-3 flex flex-wrap gap-2">
-          {typeof pitch.monthlyDividendPct === 'number' && (
-            <Badge>{pitch.monthlyDividendPct}%/mo dividend</Badge>
-          )}
+          {typeof pitch.monthlyDividendPct === 'number' && <Badge>{pitch.monthlyDividendPct}%/mo dividend</Badge>}
           {typeof pitch.offeredEquityPct === 'number' && <Badge>{pitch.offeredEquityPct}% equity</Badge>}
           {typeof pitch.expectedAppreciationPct === 'number' && (
             <Badge>{pitch.expectedAppreciationPct}%/yr appreciation</Badge>
@@ -149,15 +143,9 @@ function ListingCard({ pitch }: { pitch: Pitch }) {
 }
 
 /* ----------------- small UI bits ----------------- */
-
 function Badge({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-center rounded-full bg-ink-100 text-ink-800 text-xs px-2 py-1">
-      {children}
-    </span>
-  );
+  return <span className="inline-flex items-center rounded-full bg-ink-100 text-ink-800 text-xs px-2 py-1">{children}</span>;
 }
-
 function FitChip({ label }: { label: string }) {
   return (
     <span className="inline-flex items-center rounded-full bg-white/90 backdrop-blur px-2 py-1 text-xs font-medium border border-ink-200 text-ink-800 shadow-sm">
@@ -167,22 +155,22 @@ function FitChip({ label }: { label: string }) {
 }
 
 /* ----------------- heuristics & utils ----------------- */
-
 function computeInvestorFit(p: Pitch): { label: 'Yield' | 'Balanced' | 'Impact' | 'Value'; score: number } {
   const monthly = typeof p.monthlyDividendPct === 'number' ? p.monthlyDividendPct : 0.5; // %/mo
-  const growth = typeof p.expectedAppreciationPct === 'number' ? p.expectedAppreciationPct : 3;   // %/yr
-  const story  = typeof p.storyStrength === 'number' ? p.storyStrength : 3;                        // 1–5
+  const growth = typeof p.expectedAppreciationPct === 'number' ? p.expectedAppreciationPct : 3; // %/yr
+  const story = typeof p.storyStrength === 'number' ? p.storyStrength : 3; // 1–5
 
-  const yieldScore  = clamp(mapRange(monthly, 0.2, 1.5, 10, 95));
-  const growthScore = clamp(mapRange(growth,  0,   8,   5,  95));
-  const storyScore  = clamp(mapRange(story,   1,   5,  10,  95));
+  const yieldScore = clamp(mapRange(monthly, 0.2, 1.5, 10, 95));
+  const growthScore = clamp(mapRange(growth, 0, 8, 5, 95));
+  const storyScore = clamp(mapRange(story, 1, 5, 10, 95));
 
   const segments = [
-    { key: 'Yield' as const,    score: weighted([yieldScore, 0.6], [growthScore, 0.2], [storyScore, 0.2]) },
+    { key: 'Yield' as const, score: weighted([yieldScore, 0.6], [growthScore, 0.2], [storyScore, 0.2]) },
     { key: 'Balanced' as const, score: weighted([yieldScore, 0.4], [growthScore, 0.4], [storyScore, 0.2]) },
-    { key: 'Impact' as const,   score: weighted([yieldScore, 0.15],[growthScore, 0.25],[storyScore, 0.6]) },
-    { key: 'Value' as const,    score: weighted([yieldScore, 0.2], [growthScore, 0.6], [storyScore, 0.2]) },
+    { key: 'Impact' as const, score: weighted([yieldScore, 0.15], [growthScore, 0.25], [storyScore, 0.6]) },
+    { key: 'Value' as const, score: weighted([yieldScore, 0.2], [growthScore, 0.6], [storyScore, 0.2]) },
   ];
+
   const best = segments.reduce((a, b) => (b.score > a.score ? b : a));
   return { label: best.key, score: best.score };
 }
