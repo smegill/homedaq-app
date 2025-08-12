@@ -6,19 +6,20 @@ import Link from 'next/link';
 import Section from '@/components/ui/Section';
 import { Card } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { savePitch } from '@/lib/storage';
+import { savePitch, updatePitch, getPitches } from '@/lib/storage';
 import type { PitchInput } from '@/types/pitch';
 import GoogleMapEmbed from '@/components/GoogleMapEmbed';
 import MarketSnapshot from '@/components/MarketSnapshot';
+import { getBDProvider } from '@/lib/providers';
 
 const inputClass =
   'w-full rounded-2xl border border-ink-200 bg-white px-3 py-2 text-ink-900 placeholder-ink-400 outline-none focus:ring-2 focus:ring-brand-500';
 const labelClass = 'text-sm text-ink-700';
 const helpClass = 'text-xs text-ink-500';
 
-const MAX_PHOTOS = 6;
-const MAX_DIM = 1600;
-const JPEG_QUALITY = 0.85;
+const MAX_PHOTOS = 6;           // keep localStorage size reasonable
+const MAX_DIM = 1600;           // resize longest edge
+const JPEG_QUALITY = 0.85;      // compress a bit
 
 export default function CreatePitchPage() {
   const router = useRouter();
@@ -34,11 +35,11 @@ export default function CreatePitchPage() {
   const [postalCode, setPostalCode] = React.useState('');
 
   const [valuation, setValuation] = React.useState<number | ''>('');
-  const [equityPct, setEquityPct] = React.useState<number | ''>(''); // resident-offered equity %
+  const [equityPct, setEquityPct] = React.useState<number | ''>(''); // optional helper
   const [amountSeeking, setAmountSeeking] = React.useState<number | ''>('');
   const [minInvestment, setMinInvestment] = React.useState<number | ''>('');
 
-  // Optional/extended
+  // Optional/extended fields
   const [zillowUrl, setZillowUrl] = React.useState('');
   const [mlsUrl, setMlsUrl] = React.useState('');
 
@@ -55,17 +56,14 @@ export default function CreatePitchPage() {
   const [residentName, setResidentName] = React.useState('');
   const [residentEmail, setResidentEmail] = React.useState('');
 
-  // Offer Designer knobs (now persisted)
-  const [monthlyDivPct, setMonthlyDivPct] = React.useState<number>(0.8);   // % per month
-  const [expAppreciation, setExpAppreciation] = React.useState<number>(3.5); // % per year
-  const [horizonYears, setHorizonYears] = React.useState<number>(5);
-  const [storyStrength, setStoryStrength] = React.useState<number>(4);     // 1–5
+  // Broker-dealer publish state
+  const [publishing, setPublishing] = React.useState(false);
 
-  // Derive seeking from valuation * equity% if both provided
+  // Derive seeking from valuation * equity% if both provided (user can still override)
   React.useEffect(() => {
     if (valuation !== '' && equityPct !== '') {
       const calc = Math.max(0, Math.round((Number(valuation) * Number(equityPct)) / 100));
-      setAmountSeeking((prev) => (prev === '' ? calc : prev));
+      setAmountSeeking((prev) => (prev === '' ? calc : prev)); // don’t clobber once user edits
     }
   }, [valuation, equityPct]);
 
@@ -94,66 +92,92 @@ export default function CreatePitchPage() {
     }
   }
 
-  function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-
-    const clean: PitchInput = {
+  function toPitchInput(): PitchInput {
+    return {
       title: title.trim() || (address1 ? `Pitch: ${address1}` : 'My HomeDAQ Pitch'),
       summary: summary.trim() || pitchWhy.trim() || story.trim() || 'Home investment opportunity',
-
       address1: address1.trim(),
       address2: address2.trim() || undefined,
       city: city.trim(),
       state: state.trim(),
       postalCode: postalCode.trim(),
-
       amountSeeking: Number(amountSeeking) || 0,
       valuation: Number(valuation) || 0,
       minInvestment: Number(minInvestment) || 0,
-
+      equityPct: equityPct === '' ? undefined : Number(equityPct),
       photos: photos.length ? photos : undefined,
       heroImageUrl: photos[0] || undefined,
-
+      zillowUrl: zillowUrl.trim() || undefined,
+      mlsUrl: mlsUrl.trim() || undefined,
       residentName: residentName.trim(),
       residentEmail: residentEmail.trim(),
-
       status: 'submitted',
-
-      // Persist the offer knobs
-      offeredEquityPct: equityPct === '' ? undefined : Number(equityPct),
-      monthlyDividendPct: Number(monthlyDivPct),
-      expectedAppreciationPct: Number(expAppreciation),
-      storyStrength: Number(storyStrength),
-      horizonYears: Number(horizonYears),
     };
+  }
 
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const clean = toPitchInput();
     savePitch(clean);
     router.push('/resident/dashboard');
   }
 
+  async function onPublishClick() {
+    if (publishing) return;
+    setPublishing(true);
+    try {
+      // 1) Save (or update) the pitch locally
+      const clean = toPitchInput();
+      // savePitch may or may not return an id; we’ll get the newest pitch after save
+      const maybeId = (savePitch(clean) as unknown) as string | void;
+
+      // 2) Find the just-created pitch id (prefer return value, else newest by createdAt)
+      let createdId: string | undefined;
+      if (typeof maybeId === 'string') {
+        createdId = maybeId;
+      } else {
+        const all = getPitches();
+        if (all.length > 0) {
+          const newest = [...all].sort((a, b) => b.createdAt - a.createdAt)[0];
+          createdId = newest?.id;
+        }
+      }
+      if (!createdId) {
+        throw new Error('Could not determine the new pitch id.');
+      }
+
+      // 3) Call broker-dealer provider to create the offering
+      const bd = getBDProvider();
+      const res = await bd.createOffering({
+        title: clean.title,
+        city: clean.city,
+        state: clean.state,
+        postalCode: clean.postalCode,
+        amountSeeking: clean.amountSeeking,
+        minInvestment: clean.minInvestment,
+        equityPct: clean.equityPct ?? 0,
+      });
+
+      // 4) Persist offering info and mark as live
+      updatePitch(createdId, {
+        offeringId: res.offeringId,
+        offeringUrl: res.offeringUrl,
+        offeringStatus: res.status,
+        status: 'live',
+      });
+
+      // 5) Route to dashboard
+      router.push('/resident/dashboard');
+    } catch (err) {
+      console.error(err);
+      // eslint-disable-next-line no-alert
+      alert('Could not publish via partner. Please try again.');
+    } finally {
+      setPublishing(false);
+    }
+  }
+
   const addressQuery = [address1, city, state, postalCode].filter(Boolean).join(', ');
-
-  // Mini-offer calcs (for guidance)
-  const valN = Number(valuation) || 0;
-  const seekN = Number(amountSeeking) || 0;
-  const equityN = Number(equityPct) || 0;
-
-  const impliedEquityPct = safePct((seekN / Math.max(1, valN)) * 100);
-  const equityMismatch =
-    valuation !== '' && amountSeeking !== '' && equityPct !== '' &&
-    Math.abs(equityN - impliedEquityPct) > 5;
-
-  const monthlyDivOutflow = seekN * (monthlyDivPct / 100);
-  const suggestedFeeFloor = monthlyDivOutflow * 1.15;
-
-  const futureValue = valN * Math.pow(1 + expAppreciation / 100, Number(horizonYears) || 1);
-  const investorExitValue = (equityN / 100) * futureValue;
-  const totalDividendsPaid = monthlyDivOutflow * (12 * (Number(horizonYears) || 1));
-  const investorTotalReturn = totalDividendsPaid + (investorExitValue - seekN);
-  const simpleAnnualYieldPct =
-    (Number(horizonYears) || 0) > 0 && seekN > 0
-      ? (investorTotalReturn / seekN) / (Number(horizonYears) || 1) * 100
-      : NaN;
 
   return (
     <Section className="max-w-6xl mx-auto py-10">
@@ -262,7 +286,7 @@ export default function CreatePitchPage() {
                     type="number"
                     min={0}
                     max={100}
-                    step={0.5}
+                    step={1}
                     className={inputClass}
                     value={equityPct}
                     onChange={(e) => setEquityPct(e.target.value === '' ? '' : Number(e.target.value))}
@@ -295,13 +319,7 @@ export default function CreatePitchPage() {
             </Card>
 
             <Card className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-ink-900">Raise Details</h2>
-                <Link href="/resident/offer-designer" className="text-sm text-brand-700 hover:underline">
-                  Open full Offer Designer
-                </Link>
-              </div>
-
+              <h2 className="text-lg font-semibold text-ink-900 mb-4">Raise Details</h2>
               <div className="grid gap-4 sm:grid-cols-3">
                 <label className="grid gap-2">
                   <span className={labelClass}>Amount Seeking (USD)</span>
@@ -337,103 +355,6 @@ export default function CreatePitchPage() {
                   />
                 </label>
               </div>
-
-              {/* Mini Offer Designer controls */}
-              <div className="grid gap-4 sm:grid-cols-2 mt-4">
-                <label className="grid gap-1">
-                  <span className={labelClass}>Monthly Dividend % (of invested capital)</span>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="range"
-                      className="w-full"
-                      value={monthlyDivPct}
-                      min={0}
-                      max={2.0}
-                      step={0.05}
-                      onChange={(e) => setMonthlyDivPct(Number(e.currentTarget.value))}
-                    />
-                    <input
-                      type="number"
-                      className="w-24 rounded-2xl border border-ink-200 bg-white px-2 py-2 text-ink-900 outline-none focus:ring-2 focus:ring-brand-500"
-                      value={monthlyDivPct}
-                      min={0}
-                      max={2.0}
-                      step={0.05}
-                      onChange={(e) => setMonthlyDivPct(Number(e.currentTarget.value))}
-                    />
-                    <span className="text-sm text-ink-800">%</span>
-                  </div>
-                  <span className={helpClass}>e.g., 0.8%/mo ≈ 9.6% annual</span>
-                </label>
-
-                <label className="grid gap-1">
-                  <span className={labelClass}>Expected Appreciation (% per year)</span>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="range"
-                      className="w-full"
-                      value={expAppreciation}
-                      min={-5}
-                      max={12}
-                      step={0.25}
-                      onChange={(e) => setExpAppreciation(Number(e.currentTarget.value))}
-                    />
-                    <input
-                      type="number"
-                      className="w-24 rounded-2xl border border-ink-200 bg-white px-2 py-2 text-ink-900 outline-none focus:ring-2 focus:ring-brand-500"
-                      value={expAppreciation}
-                      min={-5}
-                      max={12}
-                      step={0.25}
-                      onChange={(e) => setExpAppreciation(Number(e.currentTarget.value))}
-                    />
-                    <span className="text-sm text-ink-800">%</span>
-                  </div>
-                </label>
-
-                <label className="grid gap-2">
-                  <span className={labelClass}>Illustrative Horizon (years)</span>
-                  <input
-                    type="number"
-                    min={1}
-                    className={inputClass}
-                    value={horizonYears}
-                    onChange={(e) => setHorizonYears(Math.max(1, Number(e.currentTarget.value)))}
-                    placeholder="5"
-                  />
-                </label>
-
-                <label className="grid gap-2">
-                  <span className={labelClass}>Resident Story Strength</span>
-                  <select
-                    className={inputClass}
-                    value={storyStrength}
-                    onChange={(e) => setStoryStrength(Number(e.target.value))}
-                  >
-                    <option value={1}>1 — Basic</option>
-                    <option value={2}>2 — Ok</option>
-                    <option value={3}>3 — Good</option>
-                    <option value={4}>4 — Strong</option>
-                    <option value={5}>5 — Exceptional</option>
-                  </select>
-                </label>
-              </div>
-
-              {/* Mini Offer Designer stats */}
-              <div className="grid gap-3 sm:grid-cols-3 mt-4">
-                <Stat label="Monthly dividends (total)">{fmtCurrency(monthlyDivOutflow)} / mo</Stat>
-                <Stat label="Suggested occupancy fee (floor)">{fmtCurrency(suggestedFeeFloor)} / mo</Stat>
-                <Stat label="Simple annualized return (illustrative)">
-                  {isFinite(simpleAnnualYieldPct) ? `${simpleAnnualYieldPct.toFixed(1)}%` : '—'}
-                </Stat>
-              </div>
-
-              {equityMismatch && (
-                <div className="mt-3 text-xs rounded-xl border border-amber-200 bg-amber-50 text-amber-900 p-3">
-                  Heads up: raising {fmtCurrency(seekN)} on a {fmtCurrency(valN)} valuation implies ~
-                  {impliedEquityPct.toFixed(1)}% sold vs your {equityN}% entry.
-                </div>
-              )}
             </Card>
 
             <Card className="p-6">
@@ -515,8 +436,11 @@ export default function CreatePitchPage() {
                 <GoogleMapEmbed query={addressQuery} height={180} zoom={14} />
               </div>
 
-              <div className="mt-6 flex gap-3">
+              <div className="mt-6 flex flex-wrap gap-3">
                 <Button type="submit">Submit Pitch</Button>
+                <Button type="button" variant="secondary" onClick={onPublishClick} disabled={publishing}>
+                  {publishing ? 'Publishing…' : 'Publish via Partner'}
+                </Button>
                 <Link href="/resident/dashboard">
                   <Button type="button">Cancel</Button>
                 </Link>
@@ -527,8 +451,35 @@ export default function CreatePitchPage() {
               </p>
             </Card>
 
-            {/* Market snapshot */}
+            {/* Market snapshot (auto-fetches when ZIP is 5 digits) */}
             <MarketSnapshot zip={postalCode} />
+
+            <Card className="p-6">
+              <h2 className="text-lg font-semibold text-ink-900 mb-4">Contact</h2>
+              <div className="grid gap-4">
+                <label className="grid gap-2">
+                  <span className={labelClass}>Resident Name</span>
+                  <input
+                    className={inputClass}
+                    value={residentName}
+                    onChange={(e) => setResidentName(e.target.value)}
+                    placeholder="Alex Johnson"
+                    required
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className={labelClass}>Resident Email</span>
+                  <input
+                    type="email"
+                    className={inputClass}
+                    value={residentEmail}
+                    onChange={(e) => setResidentEmail(e.target.value)}
+                    placeholder="alex@example.com"
+                    required
+                  />
+                </label>
+              </div>
+            </Card>
           </aside>
         </div>
       </form>
@@ -570,27 +521,4 @@ function downscaleToDataURL(file: File, maxDim: number, quality: number): Promis
     img.onerror = reject;
     img.src = blobUrl;
   });
-}
-
-function Stat({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-ink-200 p-3 bg-white">
-      <div className="text-ink-600 text-sm">{label}</div>
-      <div className="text-ink-900 font-medium">{children}</div>
-    </div>
-  );
-}
-
-function fmtCurrency(n: number) {
-  try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(
-      Math.round(n)
-    );
-  } catch {
-    return `$${Math.round(n).toLocaleString()}`;
-  }
-}
-function safePct(n: number) {
-  if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.min(100, n));
 }
