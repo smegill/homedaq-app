@@ -20,14 +20,19 @@ type Snapshot = {
 function formatCurrency(n: number | null) {
   if (n == null) return '—';
   try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    }).format(n);
   } catch {
     return `$${Math.round(n).toLocaleString()}`;
   }
 }
 function pct(v: number | null) {
   if (v == null) return '—';
-  return `${(v * 100).toFixed(Math.abs(v) >= 0.1 ? 0 : 1)}%`;
+  const abs = Math.abs(v);
+  return `${(v * 100).toFixed(abs >= 0.1 ? 0 : 1)}%`;
 }
 
 export default function MarketSnapshot({ zip }: { zip: string }) {
@@ -36,10 +41,20 @@ export default function MarketSnapshot({ zip }: { zip: string }) {
   const [loading, setLoading] = React.useState(false);
 
   React.useEffect(() => {
-    if (!zip || !/^\d{5}$/.test(zip)) return;
+    if (!zip || !/^\d{5}$/.test(zip)) {
+      setData(null);
+      setErr(null);
+      return;
+    }
     setLoading(true);
     fetch(`/api/market/zip?zip=${encodeURIComponent(zip)}&months=12`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then(async (r) => {
+        const j = await r.json().catch(() => null);
+        if (!r.ok) {
+          throw new Error(j?.error ? `HTTP ${r.status} — ${j.error}` : `HTTP ${r.status}`);
+        }
+        return j as Snapshot;
+      })
       .then((j) => {
         setData(j);
         setErr(null);
@@ -48,27 +63,33 @@ export default function MarketSnapshot({ zip }: { zip: string }) {
       .finally(() => setLoading(false));
   }, [zip]);
 
+  const asOf =
+    data?.latest?.period ? new Date(data.latest.period).toLocaleDateString() : undefined;
+
   return (
     <Card className="p-5">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-base font-semibold text-ink-900">
           Market snapshot <span className="text-ink-500">(ZIP {zip || '—'})</span>
         </h3>
-        {data?.latest?.period && (
-          <div className="text-xs text-ink-600">as of {new Date(data.latest.period).toLocaleDateString()}</div>
-        )}
+        {asOf && <div className="text-xs text-ink-600">as of {asOf}</div>}
       </div>
 
-      {loading && <div className="mt-4 h-24 w-full animate-pulse rounded-xl bg-ink-100" />}
-      {err && !loading && <div className="mt-3 text-sm text-red-600">{err}</div>}
-
-      {data && !loading && !err && (
+      {!zip || !/^\d{5}$/.test(zip) ? (
+        <div className="mt-3 text-sm text-ink-600">Enter a 5-digit ZIP to see local stats.</div>
+      ) : loading ? (
+        <div className="mt-4 h-24 w-full animate-pulse rounded-xl bg-ink-100" />
+      ) : err ? (
+        <div className="mt-3 text-sm text-red-600">{err}</div>
+      ) : data ? (
         <>
           {/* Top stat + sparkline */}
           <div className="mt-3 grid gap-4 md:grid-cols-3">
             <div>
               <div className="text-sm text-ink-600">Median sale price</div>
-              <div className="text-2xl font-semibold text-ink-900">{formatCurrency(data.latest.median_sale_price)}</div>
+              <div className="text-2xl font-semibold text-ink-900">
+                {formatCurrency(data.latest.median_sale_price)}
+              </div>
               <div className="mt-1 flex items-center gap-2 text-xs">
                 <Chip value={data.latest.mom_change} label="MoM" />
                 <Chip value={data.latest.yoy_change} label="YoY" />
@@ -81,14 +102,20 @@ export default function MarketSnapshot({ zip }: { zip: string }) {
 
           {/* Secondary stats */}
           <div className="mt-4 grid gap-3 sm:grid-cols-3 text-sm">
-            <Stat label="New listings" value={data.latest.new_listings?.toLocaleString() ?? '—'} />
-            <Stat label="Active inventory" value={data.latest.inventory?.toLocaleString() ?? '—'} />
-            <Stat label="Median DOM" value={data.latest.median_dom ?? '—'} />
+            <Stat label="New listings" value={fmtNum(data.latest.new_listings)} />
+            <Stat label="Active inventory" value={fmtNum(data.latest.inventory)} />
+            <Stat label="Median DOM" value={fmtNum(data.latest.median_dom)} />
           </div>
         </>
+      ) : (
+        <div className="mt-3 text-sm text-ink-600">No data available.</div>
       )}
     </Card>
   );
+}
+
+function fmtNum(n: number | null) {
+  return n == null ? '—' : Number(n).toLocaleString();
 }
 
 function Stat({ label, value }: { label: string; value: React.ReactNode }) {
@@ -102,32 +129,38 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
 
 function Chip({ value, label }: { value: number | null; label: string }) {
   const up = (value ?? 0) > 0;
-  const color = value == null ? 'bg-ink-100 text-ink-700' : up ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+  const cls =
+    value == null
+      ? 'bg-ink-100 text-ink-700'
+      : up
+      ? 'bg-green-100 text-green-800'
+      : 'bg-red-100 text-red-800';
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-1 ${color} text-[11px]`}>
+    <span className={`inline-flex items-center rounded-full px-2 py-1 ${cls} text-[11px]`}>
       {label}: {pct(value)}
     </span>
   );
 }
 
 function Sparkline({ series }: { series: number[] }) {
-  if (!series.length) return <div className="h-24 rounded-xl bg-ink-50 border border-ink-200" />;
+  if (!series?.length) {
+    return <div className="h-20 w-full rounded-xl bg-ink-50 border border-ink-200" />;
+  }
   const w = 320;
   const h = 80;
+  const pad = 4;
   const min = Math.min(...series);
   const max = Math.max(...series);
-  const scaleX = (i: number) => (i / (series.length - 1)) * (w - 8) + 4;
-  const scaleY = (v: number) => {
-    if (max === min) return h / 2;
-    return h - 4 - ((v - min) / (max - min)) * (h - 8);
-  };
-  const d = series.map((v, i) => `${i === 0 ? 'M' : 'L'}${scaleX(i)},${scaleY(v)}`).join(' ');
-  const last = series[series.length - 1];
+  const x = (i: number) => (i / Math.max(1, series.length - 1)) * (w - pad * 2) + pad;
+  const y = (v: number) =>
+    max === min ? h / 2 : h - pad - ((v - min) / (max - min)) * (h - pad * 2);
+  const d = series.map((v, i) => `${i ? 'L' : 'M'}${x(i)},${y(v)}`).join(' ');
+  const lastY = y(series[series.length - 1]);
+
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="h-20 w-full">
       <path d={d} fill="none" stroke="currentColor" className="text-brand-600" strokeWidth="2" />
-      {/* end dot */}
-      <circle cx={scaleX(series.length - 1)} cy={scaleY(last)} r="3" className="fill-brand-600" />
+      <circle cx={x(series.length - 1)} cy={lastY} r="3" className="fill-brand-600" />
     </svg>
   );
 }

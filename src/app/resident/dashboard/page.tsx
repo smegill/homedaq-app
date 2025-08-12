@@ -2,121 +2,132 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import Section from '@/components/ui/Section';
 import { Card } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { listPitches, deletePitch, subscribe } from '@/lib/storage';
-import type { Pitch } from '@/types/pitch';
-import GoogleMapEmbed from '@/components/GoogleMapEmbed';
+import { getPitches, deletePitch, type Pitch } from '@/lib/storage';
 
-function formatCurrency(n: number) {
-  try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
-      .format(Number.isFinite(n) ? n : 0);
-  } catch {
-    return `$${Math.round(n).toLocaleString()}`;
-  }
-}
-
-export default function ResidentDashboardPage() {
-  const router = useRouter();
+export default function ResidentDashboard() {
   const [pitches, setPitches] = React.useState<Pitch[]>([]);
 
-  React.useEffect(() => {
-    setPitches(listPitches());
-    const unsub = subscribe(() => setPitches(listPitches()));
-    return unsub;
+  const refresh = React.useCallback(() => {
+    setPitches(getPitches());
   }, []);
 
-  const handleDelete = (id: string) => {
-    if (!window.confirm('Delete this pitch? This cannot be undone.')) return;
+  React.useEffect(() => {
+    refresh();
+    const onChange = () => refresh();
+    window.addEventListener('homedaq:pitches:changed', onChange as any);
+    return () => window.removeEventListener('homedaq:pitches:changed', onChange as any);
+  }, [refresh]);
+
+  function onDelete(id: string) {
+    const ok = confirm('Delete this pitch? This cannot be undone.');
+    if (!ok) return;
     deletePitch(id);
-    setPitches(listPitches());
-  };
+    refresh();
+  }
 
   return (
-    <Section className="max-w-5xl mx-auto py-10">
-      <div className="mb-8 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-ink-900">Your Pitches</h1>
+    <Section className="max-w-6xl mx-auto py-10">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-semibold text-ink-900">My Pitches</h1>
         <Link href="/resident/create">
-          <Button>New Pitch</Button>
+          <Button>Create New</Button>
         </Link>
       </div>
 
       {pitches.length === 0 ? (
         <Card className="p-8 text-center">
-          <h2 className="text-xl font-medium text-ink-900 mb-2">No pitches yet</h2>
-          <p className="text-ink-600 mb-6">Create your first pitch to start raising capital on HomeDAQ.</p>
-          <Link href="/resident/create">
-            <Button>Create a Pitch</Button>
-          </Link>
+          <h2 className="text-lg font-semibold text-ink-900">No pitches yet</h2>
+          <p className="text-ink-700 mt-2">
+            Create your first pitch to invite investors and start building equity.
+          </p>
+          <div className="mt-4">
+            <Link href="/resident/create">
+              <Button>Start a Pitch</Button>
+            </Link>
+          </div>
         </Card>
       ) : (
-        <div className="grid gap-6 sm:grid-cols-2">
-          {pitches.map((p) => {
-            const thumbs = (p.photos ?? []).slice(0, 4);
-            const address = `${p.address1}, ${p.city}, ${p.state} ${p.postalCode}`;
-            return (
-              <Card key={p.id} className="p-5">
-                {/* Hero image */}
-                {p.heroImageUrl ? (
-                  <div className="mb-4 overflow-hidden rounded-2xl border border-ink-200">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={p.heroImageUrl} alt={p.title} className="w-full h-40 object-cover" />
-                  </div>
-                ) : (
-                  <div className="mb-4 h-40 rounded-2xl border border-dashed border-ink-200 bg-ink-50" />
-                )}
-
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-ink-900">{p.title}</h3>
-                    <p className="text-sm text-ink-600 mt-1">{p.summary}</p>
-                  </div>
-                  <span className="rounded-full bg-ink-100 text-ink-700 px-3 py-1 text-xs">{p.status}</span>
+        <div className="grid gap-5 md:grid-cols-2">
+          {pitches.map((p) => (
+            <Card key={p.id} className="overflow-hidden">
+              <div className="grid grid-cols-3">
+                <div className="col-span-1 bg-ink-50 border-r border-ink-100">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {p.heroImageUrl ? (
+                    <img
+                      src={p.heroImageUrl}
+                      alt={p.title}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center text-ink-400 text-sm">
+                      No photo
+                    </div>
+                  )}
                 </div>
-
-                <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                  <div className="text-ink-500">Location</div>
-                  <div className="text-ink-900">
-                    {p.city}, {p.state} {p.postalCode}
+                <div className="col-span-2 p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-ink-900 font-semibold">{p.title || 'Untitled'}</h3>
+                      <p className="text-sm text-ink-700">
+                        {p.address1}, {p.city}, {p.state} {p.postalCode}
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-ink-200 bg-ink-50 text-ink-800 text-xs px-2 py-1">
+                      {p.status ?? 'submitted'}
+                    </span>
                   </div>
-                  <div className="text-ink-500">Seeking</div>
-                  <div className="text-ink-900">{formatCurrency(p.amountSeeking)}</div>
-                  <div className="text-ink-500">Min Investment</div>
-                  <div className="text-ink-900">{formatCurrency(p.minInvestment)}</div>
+
+                  {/* badges */}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {typeof p.offeredEquityPct === 'number' && (
+                      <Badge>{p.offeredEquityPct}% equity</Badge>
+                    )}
+                    {typeof p.monthlyDividendPct === 'number' && (
+                      <Badge>{p.monthlyDividendPct}%/mo dividend</Badge>
+                    )}
+                    {typeof p.expectedAppreciationPct === 'number' && (
+                      <Badge>{p.expectedAppreciationPct}%/yr appreciation</Badge>
+                    )}
+                    {typeof p.minInvestment === 'number' && p.minInvestment > 0 && (
+                      <Badge>Min ${p.minInvestment.toLocaleString()}</Badge>
+                    )}
+                  </div>
+
+                  {/* money line */}
+                  <div className="mt-3 text-sm text-ink-800">
+                    Seeking <strong>${p.amountSeeking.toLocaleString()}</strong>{' '}
+                    at valuation <strong>${p.valuation.toLocaleString()}</strong>
+                  </div>
+
+                  <div className="mt-4 flex gap-3">
+                    <Link href={`/resident/edit/${p.id}`}>
+                      <Button>Edit</Button>
+                    </Link>
+                    <Button type="button" onClick={() => onDelete(p.id)} variant="secondary">
+                      Delete
+                    </Button>
+                    <Link href="/invest">
+                      <Button variant="secondary">Preview on Invest</Button>
+                    </Link>
+                  </div>
                 </div>
-
-                {/* Thumbnails */}
-                {thumbs.length > 1 && (
-                  <ul className="mt-4 grid grid-cols-4 gap-2">
-                    {thumbs.map((u, i) => (
-                      <li key={i} className="overflow-hidden rounded-xl border border-ink-200">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={u} alt={`Photo ${i + 1}`} className="w-full h-16 object-cover" />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                {/* Map preview */}
-                <GoogleMapEmbed className="mt-4" query={address} height={160} />
-
-                <div className="mt-5 flex flex-wrap gap-3">
-                  <Link href={`/resident/edit/${p.id}`}>
-                    <Button>Edit</Button>
-                  </Link>
-                  <Link href={`/invest?preview=${encodeURIComponent(p.id)}`}>
-                    <Button>Preview</Button>
-                  </Link>
-                  <Button onClick={() => handleDelete(p.id)}>Delete</Button>
-                </div>
-              </Card>
-            );
-          })}
+              </div>
+            </Card>
+          ))}
         </div>
       )}
     </Section>
+  );
+}
+
+function Badge({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center rounded-full bg-ink-100 text-ink-800 text-xs px-2 py-1">
+      {children}
+    </span>
   );
 }

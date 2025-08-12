@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { getPitch, updatePitch } from '@/lib/storage';
 import type { PitchInput } from '@/types/pitch';
+import MarketSnapshot from '@/components/MarketSnapshot';
 
 const inputClass =
   'w-full rounded-2xl border border-ink-200 bg-white px-3 py-2 text-ink-900 placeholder-ink-400 outline-none focus:ring-2 focus:ring-brand-500';
@@ -178,6 +179,11 @@ export default function EditPitchPage() {
           </div>
         </form>
       </Card>
+
+      {/* Market snapshot below the form */}
+      <div className="mt-6">
+        <MarketSnapshot zip={form.postalCode} />
+      </div>
     </Section>
   );
 }

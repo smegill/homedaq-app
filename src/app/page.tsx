@@ -32,6 +32,9 @@ export default function Home() {
                 <Link href="/invest">
                   <Button>Browse Listings</Button>
                 </Link>
+                <Link href="/investors">
+                  <Button>For Investors</Button>
+                </Link>
                 <Link href="/legal">
                   <Button>Learn More</Button>
                 </Link>
@@ -144,6 +147,48 @@ export default function Home() {
 
       {/* FEATURED LISTINGS */}
       <FeaturedPitches />
+
+      {/* WHY VS MORTGAGE */}
+      <Section className="max-w-6xl mx-auto py-12">
+        <Card className="p-6">
+          <h2 className="text-2xl font-semibold text-ink-900 text-center">Why HomeDAQ beats a mortgage (for many)</h2>
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <Box title="Lower monthly cost">
+              Fee + reserves often land below amortizing interest for similar homes.
+            </Box>
+            <Box title="Flexible ownership">
+              Buy back Investor Units on your schedule; improvements can lift value.
+            </Box>
+            <Box title="Fewer hoops">
+              Investors back a plan and property; HomeDAQ keeps underwriting transparent.
+            </Box>
+          </div>
+          <p className="mt-4 text-center text-xs text-ink-500">
+            Not universal—compare listing terms to your local mortgage quotes. Designed to stay competitive even if rates fall.
+          </p>
+        </Card>
+      </Section>
+
+      {/* INVESTOR BENEFITS */}
+      <Section className="max-w-6xl mx-auto py-8">
+        <Card className="p-6">
+          <h2 className="text-2xl font-semibold text-ink-900 text-center">What investors get</h2>
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <Box title="Monthly dividends">From occupancy fees (after reserves/expenses).</Box>
+            <Box title="Appreciation share">Participate in upside at buy-out or sale.</Box>
+            <Box title="Hands-off">HomeDAQ handles notices, mediation, and step-in if needed.</Box>
+          </div>
+        </Card>
+      </Section>
+
+      {/* DEFENSIBILITY BADGES */}
+      <Section className="max-w-6xl mx-auto pt-2 pb-10">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Badge>Patent-pending fee engine</Badge>
+          <Badge>HomeDAQ® brand & UI (TM)</Badge>
+          <Badge>Trade-secret underwriting & matching</Badge>
+        </div>
+      </Section>
 
       {/* EQUITY EXPLAINER */}
       <Section className="max-w-6xl mx-auto py-8">
@@ -269,5 +314,22 @@ function Faq({ q, a }: { q: string; a: string }) {
       </summary>
       <p className="mt-2 text-sm text-ink-700">{a}</p>
     </details>
+  );
+}
+
+function Box({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-ink-200 p-4 bg-white">
+      <div className="font-semibold text-ink-900">{title}</div>
+      <div className="mt-1 text-ink-800 text-sm">{children}</div>
+    </div>
+  );
+}
+
+function Badge({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-full border border-ink-200 bg-ink-50 text-ink-800 text-sm px-4 py-2 text-center">
+      {children}
+    </div>
   );
 }
