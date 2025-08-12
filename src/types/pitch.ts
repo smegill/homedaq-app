@@ -1,47 +1,39 @@
-// Central types for pitch data used across the app
-
 export type PitchStatus = 'draft' | 'submitted' | 'funding' | 'funded' | 'archived';
 
-export interface PitchInput {
-  // Core
+export type Pitch = {
+  id: string;
+
+  // basics
   title: string;
   summary: string;
 
+  // address
   address1: string;
   address2?: string;
   city: string;
   state: string;
   postalCode: string;
 
-  valuation: number;            // current estimated value (USD)
-  amountSeeking: number;        // raise target (USD)
-  minInvestment: number;        // minimum investment (USD)
+  // economics
+  valuation: number;
+  amountSeeking: number;
+  minInvestment: number;
+  equityPct?: number;                 // % of LLC offered
+  dividendPct?: number;               // monthly dividend % (0–100)
+  expectedAppreciationPct?: number;   // annual expected appreciation % (not a promise)
 
-  // Links (optional)
-  zillowUrl?: string;
-  mlsUrl?: string;
-
-  // Media
-  photos?: string[];            // data URLs for now
+  // media
   heroImageUrl?: string;
+  photos?: string[];
 
-  // Contact
-  residentName: string;
-  residentEmail: string;
+  // contact
+  residentName?: string;
+  residentEmail?: string;
 
-  // Status
   status: PitchStatus;
-
-  // Resident-controlled “offer knobs”
-  offeredEquityPct?: number;          // % of LLC offered to investors
-  monthlyDividendPct?: number;        // % per month of invested capital (e.g., 0.8)
-  expectedAppreciationPct?: number;   // % per year
-  storyStrength?: number;             // 1–5 (self-assessed)
-  horizonYears?: number;              // illustrative horizon for scenarios
-}
-
-export interface Pitch extends PitchInput {
-  id: string;
   createdAt: number;   // epoch ms
   updatedAt: number;   // epoch ms
-}
+};
+
+export type PitchInput =
+  Omit<Pitch, 'id' | 'createdAt' | 'updatedAt' | 'status'> & { status?: PitchStatus };
