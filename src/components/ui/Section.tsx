@@ -2,7 +2,7 @@ import * as React from "react";
 
 type SectionTag = "section" | "div" | "article";
 
-export interface SectionProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface SectionProps extends React.HTMLAttributes<HTMLElement> {
   /** Render as a different semantic tag while keeping the same styles */
   as?: SectionTag;
   className?: string;
@@ -19,7 +19,8 @@ export default function Section({
   children,
   ...props
 }: SectionProps) {
-  const Tag = as as keyof JSX.IntrinsicElements;
+  // Use ElementType to avoid JSX namespace typing issues in some TS configs
+  const Tag: React.ElementType = as;
   return (
     <Tag className={cx("px-4 sm:px-6", className)} {...props}>
       {children}
