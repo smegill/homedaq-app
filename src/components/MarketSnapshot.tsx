@@ -5,190 +5,201 @@ import { Card } from '@/components/ui/Card';
 
 type Latest = {
   period: string | null;
-  medianSalePrice: number | null;
-  medianListPrice: number | null;
-  homesSold: number | null;
+  median_sale_price: number | null;
+  new_listings: number | null;
   inventory: number | null;
-  medianDom: number | null;
-  saleToList: number | null;
-  priceYoY: number | null;
+  median_dom: number | null;
+  mom_change: number | null;
+  yoy_change: number | null;
 };
-
-type HistoryPoint = { period: string; value: number };
 
 type Snapshot = {
   zip: string;
-  notFound?: boolean;
-  latest: Latest;
-  history: HistoryPoint[];
+  latest: Latest | null;
+  history: Array<{ period: string; value: number }>;
 };
 
-function isObject(u: unknown): u is Record<string, unknown> {
-  return typeof u === 'object' && u !== null && !Array.isArray(u);
-}
-function toNumber(u: unknown): number | null {
-  if (typeof u === 'number' && Number.isFinite(u)) return u;
-  if (typeof u === 'string') {
-    const n = Number(u.trim());
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
-}
-function toString(u: unknown): string | null {
-  return typeof u === 'string' ? u : null;
-}
-
-function fmtUSD(n: number | null) {
+function formatCurrency(n: number | null | undefined) {
   if (n == null) return '—';
   try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    }).format(n);
   } catch {
     return `$${Math.round(n).toLocaleString()}`;
   }
 }
-function fmtNum(n: number | null) {
-  if (n == null) return '—';
-  return Math.round(n).toLocaleString();
-}
-function fmtPct(n: number | null) {
-  if (n == null) return '—';
-  return (n * 100).toFixed(1) + '%';
-}
-const isZip = (z?: string) => !!z && /^\d{5}$/.test(z);
-
-function normalize(zip: string, raw: unknown): Snapshot {
-  const r = isObject(raw) ? raw : {};
-
-  const latestRaw = isObject(r.latest) ? (r.latest as Record<string, unknown>) : {};
-  const latest: Latest = {
-    period: toString(latestRaw['period']) ?? toString(latestRaw['month']),
-    medianSalePrice: toNumber(latestRaw['median_sale_price'] ?? latestRaw['medianSalePrice']),
-    medianListPrice: toNumber(latestRaw['median_list_price'] ?? latestRaw['medianListPrice']),
-    homesSold: toNumber(latestRaw['homes_sold'] ?? latestRaw['homesSold']),
-    inventory: toNumber(
-      latestRaw['inventory'] ?? latestRaw['active_inventory'] ?? latestRaw['activeInventory']
-    ),
-    medianDom: toNumber(latestRaw['median_dom'] ?? latestRaw['medianDaysOnMarket']),
-    saleToList: toNumber(latestRaw['avg_sale_to_list'] ?? latestRaw['saleToList']),
-    priceYoY: toNumber(latestRaw['yoy_change'] ?? latestRaw['priceYoY']),
-  };
-
-  const history: HistoryPoint[] = Array.isArray((r as Record<string, unknown>)['history'])
-    ? ((r as Record<string, unknown>)['history'] as unknown[])
-        .map((row): HistoryPoint | null => {
-          if (!isObject(row)) return null;
-          const period = toString(row['period']) ?? '';
-          const value = toNumber(row['value']);
-          if (!period || value == null) return null;
-          return { period, value };
-        })
-        .filter((p): p is HistoryPoint => !!p)
-    : [];
-
-  const notFound = (r['notFound'] === true) || false;
-
-  return {
-    zip: toString(r['zip']) ?? zip,
-    notFound,
-    latest,
-    history,
-  };
+function pct(v: number | null | undefined) {
+  if (v == null) return '—';
+  const abs = Math.abs(v);
+  return `${(v * 100).toFixed(abs >= 0.1 ? 0 : 1)}%`;
 }
 
-export default function MarketSnapshot({ zip }: { zip?: string }) {
+export default function MarketSnapshot({ zip }: { zip: string }) {
   const [data, setData] = React.useState<Snapshot | null>(null);
-  const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
-
-  // Build tag to verify which version is deployed
-  React.useEffect(() => {
-    console.log('MarketSnapshot build tag: 2025-08-12-04');
-  }, []);
+  const [loading, setLoading] = React.useState(false);
 
   React.useEffect(() => {
-    if (!isZip(zip)) {
+    // Build tag so we can verify in prod console
+    // eslint-disable-next-line no-console
+    console.log('MarketSnapshot build tag: 2025-08-12-05');
+
+    if (!zip || !/^\d{5}$/.test(zip)) {
       setData(null);
       setErr(null);
-      setLoading(false);
       return;
     }
 
-    const ac = new AbortController();
-    setLoading(true);
-    setErr(null);
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setErr(null);
+      try {
+        const res = await fetch(`/api/market/zip?zip=${encodeURIComponent(zip)}&months=12`, {
+          headers: { Accept: 'application/json' },
+        });
 
-    fetch(`/api/market/zip?zip=${zip}&months=12`, { cache: 'no-store', signal: ac.signal })
-      .then(async (r) => {
-        const text = await r.text();
-        let parsed: unknown = null;
+        // Handle non-OK responses gracefully
+        if (!res.ok) {
+          const msg = `ZIP ${zip}: ${res.status} ${res.statusText || ''}`.trim();
+          if (!cancelled) {
+            setErr(msg);
+            setData(null);
+          }
+          return;
+        }
+
+        // Defensive JSON parse
+        let j: unknown = null;
         try {
-          parsed = JSON.parse(text);
+          j = await res.json();
         } catch {
-          // leave parsed null; will be handled below
+          if (!cancelled) {
+            setErr('ZIP data: invalid JSON');
+            setData(null);
+          }
+          return;
         }
-        if (!r.ok) {
-          const msg = isObject(parsed) && typeof parsed['error'] === 'string' ? String(parsed['error']) : text || `HTTP ${r.status}`;
-          throw new Error(msg);
-        }
-        return parsed;
-      })
-      .then((parsed) => {
-        setData(normalize(zip!, parsed));
-      })
-      .catch((e) => {
-        setErr(e instanceof Error ? e.message : String(e));
-        setData(null);
-      })
-      .finally(() => setLoading(false));
 
-    return () => ac.abort();
+        // Narrow the unknown into our shape as best we can
+        const snap = normalizeSnapshot(j, zip);
+        if (!cancelled) {
+          setData(snap);
+          setErr(null);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setErr(e instanceof Error ? e.message : 'Unknown error');
+          setData(null);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [zip]);
 
-  if (!isZip(zip)) {
-    return (
-      <Card className="p-6">
-        <h3 className="text-lg font-semibold text-ink-900">Market snapshot</h3>
-        <p className="mt-2 text-sm text-ink-600">Enter a valid 5-digit ZIP to see local comps.</p>
-      </Card>
-    );
-  }
-
   return (
-    <Card className="p-6">
-      <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-lg font-semibold text-ink-900">
-          Market snapshot <span className="text-ink-500">(ZIP {zip})</span>
+    <Card className="p-5">
+      <div className="flex items-baseline justify-between">
+        <h3 className="text-base font-semibold text-ink-900">
+          Market snapshot <span className="text-ink-500">(ZIP {zip || '—'})</span>
         </h3>
         {loading && <span className="text-xs text-ink-500">Loading…</span>}
       </div>
 
-      {err && !loading && <p className="mt-3 text-sm text-red-600">{err}</p>}
-
-      {!err && !loading && data?.notFound && (
-        <p className="mt-3 text-sm text-ink-600">No recent data available for {zip}.</p>
+      {/* Error state (includes 404) */}
+      {err && (
+        <p className="mt-3 text-sm text-red-600 break-all">
+          {err}
+        </p>
       )}
 
-      {!err && !loading && data && !data.notFound && (
-        <div className="mt-4 grid sm:grid-cols-2 gap-3">
-          <Metric label="Median sale price" value={fmtUSD(data.latest.medianSalePrice)} />
-          <Metric label="Median list price" value={fmtUSD(data.latest.medianListPrice)} />
-          <Metric label="Homes sold (mo)" value={fmtNum(data.latest.homesSold)} />
-          <Metric label="Inventory (active)" value={fmtNum(data.latest.inventory)} />
-          <Metric label="Median days on market" value={fmtNum(data.latest.medianDom)} />
-          <Metric label="Sale-to-list (avg)" value={fmtPct(data.latest.saleToList)} />
-          <Metric label="YoY price change" value={fmtPct(data.latest.priceYoY)} />
-          <Metric label="As of" value={data.latest.period ?? '—'} />
+      {/* Empty/invalid data */}
+      {!err && !loading && !data?.latest && (
+        <p className="mt-3 text-sm text-ink-600">
+          No recent data found for this ZIP. Try another ZIP or continue without a snapshot.
+        </p>
+      )}
+
+      {/* Happy path */}
+      {!err && data?.latest && (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <Metric label="Median sale price" value={formatCurrency(data.latest.median_sale_price)} />
+          <Metric label="New listings (mo)" value={data.latest.new_listings ?? '—'} />
+          <Metric label="Inventory (mo supply)" value={data.latest.inventory ?? '—'} />
+          <Metric label="Median days on market" value={data.latest.median_dom ?? '—'} />
+          <Metric label="MoM change" value={pct(data.latest.mom_change)} />
+          <Metric label="YoY change" value={pct(data.latest.yoy_change)} />
         </div>
+      )}
+
+      {/* Tiny history sparkline summary (optional, safe when empty) */}
+      {!err && (data?.history?.length || 0) > 0 && (
+        <p className="mt-4 text-[11px] text-ink-500">
+          Last {data!.history.length} months of pricing available.
+        </p>
       )}
     </Card>
   );
 }
 
-function Metric({ label, value }: { label: string; value: React.ReactNode }) {
+function Metric({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-xl border border-ink-100 p-3 bg-white">
+    <div className="rounded-xl border border-ink-100 bg-white p-3">
       <div className="text-xs text-ink-600">{label}</div>
-      <div className="mt-1 text-sm font-medium text-ink-900">{value}</div>
+      <div className="text-base font-semibold text-ink-900">{value}</div>
     </div>
   );
+}
+
+/** Coerce unknown JSON into a Snapshot-like object without throwing. */
+function normalizeSnapshot(j: unknown, zip: string): Snapshot | null {
+  if (!j || typeof j !== 'object') return null;
+
+  // try to pull latest
+  const latestObj = (j as Record<string, unknown>).latest as Record<string, unknown> | undefined;
+  const historyArr = (j as Record<string, unknown>).history as Array<Record<string, unknown>> | undefined;
+
+  const latest: Latest | null = latestObj && typeof latestObj === 'object'
+    ? {
+        period: (latestObj.period as string) ?? null,
+        median_sale_price: toNum(latestObj.median_sale_price),
+        new_listings: toNum(latestObj.new_listings),
+        inventory: toNum(latestObj.inventory),
+        median_dom: toNum(latestObj.median_dom),
+        mom_change: toNum(latestObj.mom_change),
+        yoy_change: toNum(latestObj.yoy_change),
+      }
+    : null;
+
+  const history =
+    Array.isArray(historyArr)
+      ? historyArr
+          .map((r) => {
+            const period = String(r?.period ?? '');
+            const value = toNum(r?.value);
+            return period && typeof value === 'number'
+              ? { period, value }
+              : null;
+          })
+          .filter(Boolean) as Array<{ period: string; value: number }>
+      : [];
+
+  // If neither latest nor history is valid, treat as no data
+  if (!latest && history.length === 0) return null;
+
+  return { zip, latest, history };
+}
+
+function toNum(v: unknown): number | null {
+  if (v == null) return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
 }
