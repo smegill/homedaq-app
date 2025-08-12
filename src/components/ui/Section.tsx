@@ -1,17 +1,28 @@
-import { ReactNode } from "react";
+import * as React from "react";
 
-export default function Section({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <section className={`py-16 ${className}`}>{children}</section>;
+type SectionTag = "section" | "div" | "article";
+
+export interface SectionProps extends React.HTMLAttributes<HTMLDivElement> {
+  /** Render as a different semantic tag while keeping the same styles */
+  as?: SectionTag;
+  className?: string;
+  children: React.ReactNode;
 }
 
-export function SectionContainer({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`max-w-container mx-auto px-4 sm:px-6 ${className}`}>{children}</div>;
+function cx(...parts: Array<string | false | null | undefined>) {
+  return parts.filter(Boolean).join(" ");
 }
 
-export function SectionTitle({ children, className = "" }: { children: ReactNode; className?: string }) {
+export default function Section({
+  as = "section",
+  className,
+  children,
+  ...props
+}: SectionProps) {
+  const Tag = as as keyof JSX.IntrinsicElements;
   return (
-    <h2 className={`text-3xl sm:text-4xl font-extrabold tracking-tight text-ink-800 text-center mb-8 ${className}`}>
+    <Tag className={cx("px-4 sm:px-6", className)} {...props}>
       {children}
-    </h2>
+    </Tag>
   );
 }
