@@ -3,42 +3,106 @@
 import * as React from 'react';
 import { Card } from '@/components/ui/Card';
 
-type SnapshotLoose = {
-  zip?: string;
-  latest?: Record<string, unknown> | null;
-  history?: Array<{ period?: string; value?: number | string | null }>;
-  notFound?: boolean;
-  error?: string;
+type Latest = {
+  period: string | null;
+  medianSalePrice: number | null;
+  medianListPrice: number | null;
+  homesSold: number | null;
+  inventory: number | null;
+  medianDom: number | null;
+  saleToList: number | null;
+  priceYoY: number | null;
 };
 
-function fmtUSD(n: unknown) {
-  const num = typeof n === 'string' ? Number(n) : (n as number | null | undefined);
-  if (!Number.isFinite(num ?? NaN)) return '—';
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(
-    num as number
-  );
+type HistoryPoint = { period: string; value: number };
+
+type Snapshot = {
+  zip: string;
+  notFound?: boolean;
+  latest: Latest;
+  history: HistoryPoint[];
+};
+
+function isObject(u: unknown): u is Record<string, unknown> {
+  return typeof u === 'object' && u !== null && !Array.isArray(u);
 }
-function fmtNum(n: unknown) {
-  const num = typeof n === 'string' ? Number(n) : (n as number | null | undefined);
-  if (!Number.isFinite(num ?? NaN)) return '—';
-  return Math.round(num as number).toLocaleString();
+function toNumber(u: unknown): number | null {
+  if (typeof u === 'number' && Number.isFinite(u)) return u;
+  if (typeof u === 'string') {
+    const n = Number(u.trim());
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
 }
-function fmtPct(n: unknown) {
-  const num = typeof n === 'string' ? Number(n) : (n as number | null | undefined);
-  if (!Number.isFinite(num ?? NaN)) return '—';
-  return ((num as number) * 100).toFixed(1) + '%';
+function toString(u: unknown): string | null {
+  return typeof u === 'string' ? u : null;
+}
+
+function fmtUSD(n: number | null) {
+  if (n == null) return '—';
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+  } catch {
+    return `$${Math.round(n).toLocaleString()}`;
+  }
+}
+function fmtNum(n: number | null) {
+  if (n == null) return '—';
+  return Math.round(n).toLocaleString();
+}
+function fmtPct(n: number | null) {
+  if (n == null) return '—';
+  return (n * 100).toFixed(1) + '%';
 }
 const isZip = (z?: string) => !!z && /^\d{5}$/.test(z);
 
+function normalize(zip: string, raw: unknown): Snapshot {
+  const r = isObject(raw) ? raw : {};
+
+  const latestRaw = isObject(r.latest) ? (r.latest as Record<string, unknown>) : {};
+  const latest: Latest = {
+    period: toString(latestRaw['period']) ?? toString(latestRaw['month']),
+    medianSalePrice: toNumber(latestRaw['median_sale_price'] ?? latestRaw['medianSalePrice']),
+    medianListPrice: toNumber(latestRaw['median_list_price'] ?? latestRaw['medianListPrice']),
+    homesSold: toNumber(latestRaw['homes_sold'] ?? latestRaw['homesSold']),
+    inventory: toNumber(
+      latestRaw['inventory'] ?? latestRaw['active_inventory'] ?? latestRaw['activeInventory']
+    ),
+    medianDom: toNumber(latestRaw['median_dom'] ?? latestRaw['medianDaysOnMarket']),
+    saleToList: toNumber(latestRaw['avg_sale_to_list'] ?? latestRaw['saleToList']),
+    priceYoY: toNumber(latestRaw['yoy_change'] ?? latestRaw['priceYoY']),
+  };
+
+  const history: HistoryPoint[] = Array.isArray((r as Record<string, unknown>)['history'])
+    ? ((r as Record<string, unknown>)['history'] as unknown[])
+        .map((row): HistoryPoint | null => {
+          if (!isObject(row)) return null;
+          const period = toString(row['period']) ?? '';
+          const value = toNumber(row['value']);
+          if (!period || value == null) return null;
+          return { period, value };
+        })
+        .filter((p): p is HistoryPoint => !!p)
+    : [];
+
+  const notFound = (r['notFound'] === true) || false;
+
+  return {
+    zip: toString(r['zip']) ?? zip,
+    notFound,
+    latest,
+    history,
+  };
+}
+
 export default function MarketSnapshot({ zip }: { zip?: string }) {
-  const [data, setData] = React.useState<SnapshotLoose | null>(null);
+  const [data, setData] = React.useState<Snapshot | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
 
-  // Build tag so we can confirm which code is running on Vercel
+  // Build tag to verify which version is deployed
   React.useEffect(() => {
-    // update this when you redeploy to verify in the browser console
-    console.log('MarketSnapshot build tag: 2025-08-12-03');
+    console.log('MarketSnapshot build tag: 2025-08-12-04');
   }, []);
 
   React.useEffect(() => {
@@ -56,16 +120,20 @@ export default function MarketSnapshot({ zip }: { zip?: string }) {
     fetch(`/api/market/zip?zip=${zip}&months=12`, { cache: 'no-store', signal: ac.signal })
       .then(async (r) => {
         const text = await r.text();
+        let parsed: unknown = null;
         try {
-          const json = JSON.parse(text) as SnapshotLoose;
-          if (!r.ok) throw new Error((json as any)?.error || `HTTP ${r.status}`);
-          return json;
+          parsed = JSON.parse(text);
         } catch {
-          throw new Error(text || `HTTP ${r.status}`);
+          // leave parsed null; will be handled below
         }
+        if (!r.ok) {
+          const msg = isObject(parsed) && typeof parsed['error'] === 'string' ? String(parsed['error']) : text || `HTTP ${r.status}`;
+          throw new Error(msg);
+        }
+        return parsed;
       })
-      .then((json) => {
-        setData(json ?? {});
+      .then((parsed) => {
+        setData(normalize(zip!, parsed));
       })
       .catch((e) => {
         setErr(e instanceof Error ? e.message : String(e));
@@ -85,18 +153,6 @@ export default function MarketSnapshot({ zip }: { zip?: string }) {
     );
   }
 
-  const latest = data?.latest ?? {}; // <- ALWAYS defined object
-
-  // We accept either snake_case or camelCase from the API
-  const medianSalePrice = (latest as any).median_sale_price ?? (latest as any).medianSalePrice;
-  const medianListPrice = (latest as any).median_list_price ?? (latest as any).medianListPrice;
-  const homesSold = (latest as any).homes_sold ?? (latest as any).homesSold;
-  const inventory = (latest as any).inventory ?? (latest as any).active_inventory ?? (latest as any).activeInventory;
-  const medianDom = (latest as any).median_dom ?? (latest as any).medianDaysOnMarket;
-  const saleToList = (latest as any).avg_sale_to_list ?? (latest as any).saleToList;
-  const priceYoY = (latest as any).yoy_change ?? (latest as any).priceYoY;
-  const period = (latest as any).period ?? (latest as any).month ?? null;
-
   return (
     <Card className="p-6">
       <div className="flex items-baseline justify-between gap-3">
@@ -112,16 +168,16 @@ export default function MarketSnapshot({ zip }: { zip?: string }) {
         <p className="mt-3 text-sm text-ink-600">No recent data available for {zip}.</p>
       )}
 
-      {!err && !loading && !data?.notFound && (
+      {!err && !loading && data && !data.notFound && (
         <div className="mt-4 grid sm:grid-cols-2 gap-3">
-          <Metric label="Median sale price" value={fmtUSD(medianSalePrice)} />
-          <Metric label="Median list price" value={fmtUSD(medianListPrice)} />
-          <Metric label="Homes sold (mo)" value={fmtNum(homesSold)} />
-          <Metric label="Inventory (active)" value={fmtNum(inventory)} />
-          <Metric label="Median days on market" value={fmtNum(medianDom)} />
-          <Metric label="Sale-to-list (avg)" value={fmtPct(saleToList)} />
-          <Metric label="YoY price change" value={fmtPct(priceYoY)} />
-          <Metric label="As of" value={period ?? '—'} />
+          <Metric label="Median sale price" value={fmtUSD(data.latest.medianSalePrice)} />
+          <Metric label="Median list price" value={fmtUSD(data.latest.medianListPrice)} />
+          <Metric label="Homes sold (mo)" value={fmtNum(data.latest.homesSold)} />
+          <Metric label="Inventory (active)" value={fmtNum(data.latest.inventory)} />
+          <Metric label="Median days on market" value={fmtNum(data.latest.medianDom)} />
+          <Metric label="Sale-to-list (avg)" value={fmtPct(data.latest.saleToList)} />
+          <Metric label="YoY price change" value={fmtPct(data.latest.priceYoY)} />
+          <Metric label="As of" value={data.latest.period ?? '—'} />
         </div>
       )}
     </Card>
