@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import clsx from 'clsx';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost';
 type ButtonSize = 'sm' | 'md' | 'lg';
@@ -24,11 +23,13 @@ const sizeClasses: Record<ButtonSize, string> = {
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary: 'bg-brand-600 text-white hover:bg-brand-700',
-  secondary:
-    'bg-white text-ink-900 border border-ink-200 hover:bg-ink-50',
-  ghost:
-    'bg-transparent text-ink-800 hover:bg-ink-50',
+  secondary: 'bg-white text-ink-900 border border-ink-200 hover:bg-ink-50',
+  ghost: 'bg-transparent text-ink-800 hover:bg-ink-50',
 };
+
+function cx(...parts: Array<string | false | null | undefined>) {
+  return parts.filter(Boolean).join(' ');
+}
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   (
@@ -46,7 +47,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         type={type}
-        className={clsx(base, sizeClasses[size], variantClasses[variant], className)}
+        className={cx(base, sizeClasses[size], variantClasses[variant], className)}
         {...props}
       >
         {children}

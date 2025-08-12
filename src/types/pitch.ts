@@ -17,6 +17,10 @@ export interface PitchInput {
   amountSeeking: number;        // raise target (USD)
   minInvestment: number;        // minimum investment (USD)
 
+  // Links (optional)
+  zillowUrl?: string;
+  mlsUrl?: string;
+
   // Media
   photos?: string[];            // data URLs for now
   heroImageUrl?: string;
@@ -28,7 +32,7 @@ export interface PitchInput {
   // Status
   status: PitchStatus;
 
-  // New: resident-controlled “offer knobs”
+  // Resident-controlled “offer knobs”
   offeredEquityPct?: number;          // % of LLC offered to investors
   monthlyDividendPct?: number;        // % per month of invested capital (e.g., 0.8)
   expectedAppreciationPct?: number;   // % per year

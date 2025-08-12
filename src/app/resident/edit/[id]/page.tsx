@@ -23,7 +23,12 @@ const JPEG_QUALITY = 0.85;
 export default function EditPitchPage() {
   const router = useRouter();
   const params = useParams();
-  const id = typeof params?.id === 'string' ? params.id : Array.isArray(params?.id) ? params.id[0] : '';
+  const id =
+    typeof params?.id === 'string'
+      ? params.id
+      : Array.isArray(params?.id)
+      ? params.id[0]
+      : '';
 
   const [loaded, setLoaded] = React.useState(false);
   const [pitch, setPitch] = React.useState<Pitch | null>(null);
@@ -75,8 +80,10 @@ export default function EditPitchPage() {
       setOfferedEquityPct(p.offeredEquityPct ?? '');
       setAmountSeeking(p.amountSeeking ?? '');
       setMinInvestment(p.minInvestment ?? '');
-      setZillowUrl((p as any).zillowUrl ?? ''); // tolerate if present; safe to ignore otherwise
-      setMlsUrl((p as any).mlsUrl ?? '');
+
+      setZillowUrl(p.zillowUrl ?? '');
+      setMlsUrl(p.mlsUrl ?? '');
+
       setPhotos(p.photos ?? []);
       setResidentName(p.residentName ?? '');
       setResidentEmail(p.residentEmail ?? '');
@@ -156,13 +163,20 @@ export default function EditPitchPage() {
       city: city.trim(),
       state: state.trim(),
       postalCode: postalCode.trim(),
+
       valuation: Number(valuation) || 0,
       amountSeeking: Number(amountSeeking) || 0,
       minInvestment: Number(minInvestment) || 0,
+
+      zillowUrl: zillowUrl.trim() || undefined,
+      mlsUrl: mlsUrl.trim() || undefined,
+
       photos: photos.length ? photos : undefined,
       heroImageUrl: photos[0] || undefined,
+
       residentName: residentName.trim(),
       residentEmail: residentEmail.trim(),
+
       offeredEquityPct: offeredEquityPct === '' ? undefined : Number(offeredEquityPct),
       monthlyDividendPct: Number(monthlyDividendPct),
       expectedAppreciationPct: Number(expectedAppreciationPct),
