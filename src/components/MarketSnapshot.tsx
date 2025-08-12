@@ -3,121 +3,136 @@
 import * as React from 'react';
 import { Card } from '@/components/ui/Card';
 
-type Snapshot = {
-  zip: string;
-  latest: {
-    period: string | null;
-    median_sale_price: number | null;
-    new_listings: number | null;
-    inventory: number | null;
-    median_dom: number | null;
-    mom_change: number | null;
-    yoy_change: number | null;
-  };
-  history: { period: string; value: number }[];
+type SnapshotLoose = {
+  zip?: string;
+  latest?: Record<string, unknown> | null;
+  history?: Array<{ period?: string; value?: number | string | null }>;
+  notFound?: boolean;
+  error?: string;
 };
 
-function fmtUSD(n: number | null) {
-  if (n == null || Number.isNaN(n)) return '—';
-  try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
-  } catch {
-    return `$${Math.round(n).toLocaleString()}`;
-  }
+function fmtUSD(n: unknown) {
+  const num = typeof n === 'string' ? Number(n) : (n as number | null | undefined);
+  if (!Number.isFinite(num ?? NaN)) return '—';
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(
+    num as number
+  );
 }
-function fmtPct(v: number | null) {
-  if (v == null || Number.isNaN(v)) return '—';
-  const abs = Math.abs(v);
-  return `${(v * 100).toFixed(abs >= 0.1 ? 0 : 1)}%`;
+function fmtNum(n: unknown) {
+  const num = typeof n === 'string' ? Number(n) : (n as number | null | undefined);
+  if (!Number.isFinite(num ?? NaN)) return '—';
+  return Math.round(num as number).toLocaleString();
 }
-function toNum(v: unknown): number | null {
-  const n = typeof v === 'string' ? Number(v) : (v as number);
-  return Number.isFinite(n) ? n : null;
+function fmtPct(n: unknown) {
+  const num = typeof n === 'string' ? Number(n) : (n as number | null | undefined);
+  if (!Number.isFinite(num ?? NaN)) return '—';
+  return ((num as number) * 100).toFixed(1) + '%';
 }
-function normalize(zip: string, j: any): Snapshot {
-  const latest = j?.latest ?? {};
-  return {
-    zip,
-    latest: {
-      period: latest?.period ?? null,
-      median_sale_price: toNum(latest?.median_sale_price),
-      new_listings: toNum(latest?.new_listings),
-      inventory: toNum(latest?.inventory),
-      median_dom: toNum(latest?.median_dom),
-      mom_change: toNum(latest?.mom_change),
-      yoy_change: toNum(latest?.yoy_change),
-    },
-    history: Array.isArray(j?.history)
-      ? j.history
-          .map((r: any) => ({ period: r?.period ?? '', value: toNum(r?.value) }))
-          .filter((r: any) => r.period && r.value != null)
-      : [],
-  };
-}
+const isZip = (z?: string) => !!z && /^\d{5}$/.test(z);
 
-export default function MarketSnapshot({ zip }: { zip: string }) {
-  const [data, setData] = React.useState<Snapshot | null>(null);
-  const [err, setErr] = React.useState<string | null>(null);
+export default function MarketSnapshot({ zip }: { zip?: string }) {
+  const [data, setData] = React.useState<SnapshotLoose | null>(null);
   const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
+
+  // Build tag so we can confirm which code is running on Vercel
+  React.useEffect(() => {
+    // update this when you redeploy to verify in the browser console
+    console.log('MarketSnapshot build tag: 2025-08-12-03');
+  }, []);
 
   React.useEffect(() => {
-    if (!zip || !/^\d{5}$/.test(zip)) {
+    if (!isZip(zip)) {
       setData(null);
       setErr(null);
+      setLoading(false);
       return;
     }
+
+    const ac = new AbortController();
     setLoading(true);
-    fetch(`/api/market/zip?zip=${encodeURIComponent(zip)}&months=12`)
+    setErr(null);
+
+    fetch(`/api/market/zip?zip=${zip}&months=12`, { cache: 'no-store', signal: ac.signal })
       .then(async (r) => {
-        const j = await r.json().catch(() => null);
-        if (!r.ok) {
-          throw new Error(j?.error ? `HTTP ${r.status} — ${j.error}` : `HTTP ${r.status}`);
+        const text = await r.text();
+        try {
+          const json = JSON.parse(text) as SnapshotLoose;
+          if (!r.ok) throw new Error((json as any)?.error || `HTTP ${r.status}`);
+          return json;
+        } catch {
+          throw new Error(text || `HTTP ${r.status}`);
         }
-        return j;
       })
-      .then((j) => {
-        setData(normalize(zip, j ?? {}));
-        setErr(null);
+      .then((json) => {
+        setData(json ?? {});
       })
       .catch((e) => {
-        setErr(String(e?.message || e));
+        setErr(e instanceof Error ? e.message : String(e));
         setData(null);
       })
       .finally(() => setLoading(false));
+
+    return () => ac.abort();
   }, [zip]);
+
+  if (!isZip(zip)) {
+    return (
+      <Card className="p-6">
+        <h3 className="text-lg font-semibold text-ink-900">Market snapshot</h3>
+        <p className="mt-2 text-sm text-ink-600">Enter a valid 5-digit ZIP to see local comps.</p>
+      </Card>
+    );
+  }
+
+  const latest = data?.latest ?? {}; // <- ALWAYS defined object
+
+  // We accept either snake_case or camelCase from the API
+  const medianSalePrice = (latest as any).median_sale_price ?? (latest as any).medianSalePrice;
+  const medianListPrice = (latest as any).median_list_price ?? (latest as any).medianListPrice;
+  const homesSold = (latest as any).homes_sold ?? (latest as any).homesSold;
+  const inventory = (latest as any).inventory ?? (latest as any).active_inventory ?? (latest as any).activeInventory;
+  const medianDom = (latest as any).median_dom ?? (latest as any).medianDaysOnMarket;
+  const saleToList = (latest as any).avg_sale_to_list ?? (latest as any).saleToList;
+  const priceYoY = (latest as any).yoy_change ?? (latest as any).priceYoY;
+  const period = (latest as any).period ?? (latest as any).month ?? null;
 
   return (
     <Card className="p-6">
-      <h3 className="text-lg font-semibold text-ink-900">
-        Market snapshot <span className="text-ink-500">(ZIP {zip || '—'})</span>
-      </h3>
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-lg font-semibold text-ink-900">
+          Market snapshot <span className="text-ink-500">(ZIP {zip})</span>
+        </h3>
+        {loading && <span className="text-xs text-ink-500">Loading…</span>}
+      </div>
 
-      {loading && <p className="mt-3 text-sm text-ink-600">Loading market data…</p>}
       {err && !loading && <p className="mt-3 text-sm text-red-600">{err}</p>}
 
-      {!loading && !err && data && (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <Stat label="Median sale price" value={fmtUSD(data.latest.median_sale_price)} />
-          <Stat label="New listings (mo)" value={data.latest.new_listings ?? '—'} />
-          <Stat label="Inventory (active)" value={data.latest.inventory ?? '—'} />
-          <Stat label="Median days on market" value={data.latest.median_dom ?? '—'} />
-          <Stat label="MoM change" value={fmtPct(data.latest.mom_change)} />
-          <Stat label="YoY change" value={fmtPct(data.latest.yoy_change)} />
-        </div>
+      {!err && !loading && data?.notFound && (
+        <p className="mt-3 text-sm text-ink-600">No recent data available for {zip}.</p>
       )}
 
-      {!loading && !err && !data && (
-        <p className="mt-3 text-sm text-ink-600">Enter a 5-digit ZIP to see recent market stats.</p>
+      {!err && !loading && !data?.notFound && (
+        <div className="mt-4 grid sm:grid-cols-2 gap-3">
+          <Metric label="Median sale price" value={fmtUSD(medianSalePrice)} />
+          <Metric label="Median list price" value={fmtUSD(medianListPrice)} />
+          <Metric label="Homes sold (mo)" value={fmtNum(homesSold)} />
+          <Metric label="Inventory (active)" value={fmtNum(inventory)} />
+          <Metric label="Median days on market" value={fmtNum(medianDom)} />
+          <Metric label="Sale-to-list (avg)" value={fmtPct(saleToList)} />
+          <Metric label="YoY price change" value={fmtPct(priceYoY)} />
+          <Metric label="As of" value={period ?? '—'} />
+        </div>
       )}
     </Card>
   );
 }
 
-function Stat({ label, value }: { label: string; value: React.ReactNode }) {
+function Metric({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-ink-100 bg-white p-3">
+    <div className="rounded-xl border border-ink-100 p-3 bg-white">
       <div className="text-xs text-ink-600">{label}</div>
-      <div className="mt-1 text-base font-semibold text-ink-900">{value}</div>
+      <div className="mt-1 text-sm font-medium text-ink-900">{value}</div>
     </div>
   );
 }
