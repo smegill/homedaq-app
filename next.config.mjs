@@ -1,8 +1,6 @@
-// next.config.mjs
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
-    // Allow remote images from these hosts
     remotePatterns: [
       { protocol: 'https', hostname: 'dongardner.com' },
       { protocol: 'https', hostname: 'images.unsplash.com' },

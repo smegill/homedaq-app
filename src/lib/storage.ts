@@ -1,155 +1,117 @@
-// src/lib/storage.ts
-// Lightweight client-side persistence for pitches with a simple pub/sub.
-//
-// Notes
-// - Works during SSR by keeping an in-memory mirror. LocalStorage is used in the browser.
-// - No `any` usage; we cast through `unknown` when we must bridge types.
-// - `subscribe` returns a React-safe cleanup: () => void (NOT a boolean).
+// Simple in-memory + localStorage persistence layer for pitches.
+// Strongly typed, no `any`, and with a small pub/sub.
+
+'use client';
 
 import type { Pitch, PitchInput } from '@/types/pitch';
 
-const STORAGE_KEY = 'homedaq:pitches:v1';
+const LS_KEY = 'homedaq:pitches:v1';
 
-// In-memory mirror for non-browser environments (SSR / build)
-let memory: Pitch[] = [];
+const listeners: Set<(rows: Pitch[]) => void> = new Set();
+let rows: Pitch[] = [];
 
-// --- utilities ----------------------------------------------------------------
-
-function safeParse<T>(raw: string | null): T | null {
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as unknown as T;
-  } catch {
-    return null;
-  }
-}
-
-function read(): Pitch[] {
-  if (typeof window === 'undefined') {
-    return memory;
-  }
-  const parsed = safeParse<Pitch[]>(window.localStorage.getItem(STORAGE_KEY));
-  return Array.isArray(parsed) ? parsed : [];
-}
-
-function write(next: Pitch[]): void {
-  if (typeof window === 'undefined') {
-    memory = [...next];
-  } else {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  }
-  // notify
-  for (const fn of listeners) {
-    try {
-      fn(next);
-    } catch {
-      // no-op: listeners must be resilient
-    }
-  }
-}
-
-function ensureId(): string {
-  // crypto.randomUUID when available; fallback to timestamp + random
+// Utilities
+function uuid(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    try {
-      // @ts-expect-error: runtime feature detection
-      return crypto.randomUUID();
-    } catch {
-      // fall through
-    }
+    return crypto.randomUUID();
   }
-  return `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  return (
+    'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    }) + ''
+  );
 }
 
-// --- public API ----------------------------------------------------------------
-
-/** Get all pitches (snapshot, not reactive) */
-export function getPitches(): Pitch[] {
-  return read();
-}
-
-/** Back-compat alias some components still import */
-export const listPitches = getPitches;
-
-/** Find a single pitch by id */
-export function getPitchById(id: string): Pitch | undefined {
-  return read().find((p) => p.id === id);
-}
-
-/** Back-compat alias (some pages still import `getPitch`) */
-export const getPitch = getPitchById;
-
-/**
- * Create a new pitch.
- * Accepts `PitchInput` (what your forms collect) and fills ids/timestamps.
- * We cast through `unknown` to avoid leaking `any` while letting the stored
- * object remain strongly typed as `Pitch` for consumers.
- */
-export function savePitch(input: PitchInput): Pitch {
-  const now = Date.now();
-
-  // Build the new record by layering system fields over user input.
-  // We don't assume which optional fields exist in your Pitch type here;
-  // instead we cast through `unknown` at the boundary.
-  const newPitch = {
-    ...(input as unknown as Record<string, unknown>),
-    id: ensureId(),
-    createdAt: now,
-    updatedAt: now,
-  } as unknown as Pitch;
-
-  const all = read();
-  write([newPitch, ...all]);
-  return newPitch;
-}
-
-/** Update an existing pitch by id with a partial set of fields */
-export function updatePitch(id: string, changes: Partial<Pitch>): Pitch | undefined {
-  const all = read();
-  const idx = all.findIndex((p) => p.id === id);
-  if (idx === -1) return undefined;
-
-  const updated = {
-    ...(all[idx] as unknown as Record<string, unknown>),
-    ...(changes as unknown as Record<string, unknown>),
-    updatedAt: Date.now(),
-  } as unknown as Pitch;
-
-  const next = [...all];
-  next[idx] = updated;
-  write(next);
-  return updated;
-}
-
-/** Remove a pitch by id */
-export function deletePitch(id: string): boolean {
-  const before = read();
-  const next = before.filter((p) => p.id !== id);
-  const changed = next.length !== before.length;
-  if (changed) write(next);
-  return changed;
-}
-
-// --- subscriptions -------------------------------------------------------------
-
-type Listener = (pitches: Pitch[]) => void;
-const listeners = new Set<Listener>();
-
-/**
- * Subscribe to changes to the pitches collection.
- * Returns a cleanup function suitable for React's useEffect (`() => void`).
- */
-export function subscribe(fn: Listener): () => void {
-  listeners.add(fn);
-  // fire once with the current snapshot so UI can sync immediately
+function load() {
+  if (typeof window === 'undefined') return;
   try {
-    fn(read());
+    const raw = window.localStorage.getItem(LS_KEY);
+    rows = raw ? (JSON.parse(raw) as Pitch[]) : [];
   } catch {
-    // ignore listener errors
+    rows = [];
   }
+}
+function save() {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(LS_KEY, JSON.stringify(rows));
+  } catch {
+    // ignore storage quota errors
+  }
+  for (const fn of listeners) fn([...rows]);
+}
 
-  // IMPORTANT: return a void cleanup (NOT the boolean from Set.delete)
+// Initialize from storage (browser only)
+if (typeof window !== 'undefined') {
+  load();
+}
+
+export function subscribe(fn: (rows: Pitch[]) => void): () => void {
+  listeners.add(fn);
+  // push current snapshot immediately
+  fn([...rows]);
   return () => {
     listeners.delete(fn);
   };
+}
+
+export function getPitches(): Pitch[] {
+  return [...rows];
+}
+
+export async function getPitchById(id: string): Promise<Pitch | null> {
+  const found = rows.find((r) => r.id === id);
+  return found ?? null;
+}
+
+export async function savePitch(input: PitchInput): Promise<Pitch> {
+  const now = Date.now();
+  // If editing, we expect input.id to be set by the caller
+  const id = input.id ?? uuid();
+
+  const existingIdx = rows.findIndex((r) => r.id === id);
+  if (existingIdx >= 0) {
+    const updated: Pitch = {
+      ...rows[existingIdx],
+      ...input,
+      id,
+      updatedAt: now,
+    } as Pitch;
+    rows[existingIdx] = updated;
+    save();
+    return updated;
+  }
+
+  const created: Pitch = {
+    id,
+    title: input.title ?? 'Untitled pitch',
+    city: input.city,
+    state: input.state,
+    postalCode: input.postalCode,
+    valuation: input.valuation,
+    minInvestment: input.minInvestment,
+    equityPct: input.equityPct,
+    summary: input.summary,
+    heroImageUrl: input.heroImageUrl,
+    gallery: input.gallery ?? [],
+    offeringUrl: input.offeringUrl,
+    status: input.status ?? 'review',
+    problem: input.problem,
+    solution: input.solution,
+    plan: input.plan,
+    useOfFunds: input.useOfFunds,
+    exitStrategy: input.exitStrategy,
+    improvements: input.improvements,
+    timeline: input.timeline,
+    residentStory: input.residentStory,
+    strategyTags: input.strategyTags ?? [],
+    riskProfile: input.riskProfile,
+    createdAt: input.createdAt ?? now,
+    updatedAt: now,
+  };
+  rows.unshift(created);
+  save();
+  return created;
 }

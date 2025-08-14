@@ -1,39 +1,49 @@
-export type PitchStatus = 'draft' | 'submitted' | 'funding' | 'funded' | 'archived';
+export type PitchStatus = 'draft' | 'review' | 'live' | 'funded' | 'closed' | 'archived';
+export type RiskProfile = 'Balanced' | 'Yield' | 'Growth';
 
-export type Pitch = {
+export interface Pitch {
   id: string;
-
-  // basics
   title: string;
-  summary: string;
 
-  // address
-  address1: string;
+  // Location
+  address1?: string;
   address2?: string;
-  city: string;
-  state: string;
-  postalCode: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
 
-  // economics
-  valuation: number;
-  amountSeeking: number;
-  minInvestment: number;
-  equityPct?: number;                 // % of LLC offered
-  dividendPct?: number;               // monthly dividend % (0–100)
-  expectedAppreciationPct?: number;   // annual expected appreciation % (not a promise)
+  // Core economics
+  valuation?: number;       // asking/target valuation for the property/LLC
+  minInvestment?: number;   // minimum a single investor can put in
+  equityPct?: number;       // equity offered to outside investors (0–100)
 
-  // media
+  // Presentation
+  summary?: string;
   heroImageUrl?: string;
-  photos?: string[];
+  gallery?: string[];
 
-  // contact
-  residentName?: string;
-  residentEmail?: string;
+  // External raise link (outbound)
+  offeringUrl?: string;
 
+  // Marketplace state
   status: PitchStatus;
-  createdAt: number;   // epoch ms
-  updatedAt: number;   // epoch ms
-};
 
-export type PitchInput =
-  Omit<Pitch, 'id' | 'createdAt' | 'updatedAt' | 'status'> & { status?: PitchStatus };
+  // Founder-style narrative
+  problem?: string;
+  solution?: string;
+  plan?: string;
+  useOfFunds?: string;
+  exitStrategy?: string;
+  improvements?: string;
+  timeline?: string;
+  residentStory?: string;
+  strategyTags?: string[];
+
+  // Small “Investor Fit” chip
+  riskProfile?: RiskProfile;
+
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type PitchInput = Partial<Pitch>;
