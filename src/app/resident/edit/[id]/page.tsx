@@ -2,52 +2,108 @@
 
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import PitchWizardClient from '@/components/forms/PitchWizardClient';
 import { getPitchById } from '@/lib/storage';
-import type { Pitch } from '@/types/pitch';
+import type { Draft } from '@/lib/draft';
+import type { PitchStatus } from '@/types/pitch';
 
-export default function EditPitchPage() {
+const DRAFT_KEY = 'homedaq.pitchDraft.v1';
+
+// helpers
+const s = (v: unknown): string => (typeof v === 'string' ? v : '');
+const nstr = (v: unknown): string =>
+  typeof v === 'number' ? String(v) : typeof v === 'string' && v.trim() !== '' ? v : '';
+
+const isPitchStatus = (v: unknown): v is PitchStatus =>
+  v === 'draft' || v === 'review' || v === 'live' || v === 'funded' || v === 'closed';
+
+function toDraft(p: Record<string, unknown>): Draft {
+  const postal = (p['postalCode'] as string) ?? (p['zip'] as string) ?? '';
+  const status: PitchStatus = isPitchStatus(p['status']) ? p['status'] : 'review';
+
+  return {
+    // Basics
+    title: s(p['title']),
+    address1: s(p['address1']),
+    address2: s(p['address2']),
+    city: s(p['city']),
+    state: s(p['state']),
+    postalCode: postal,
+    status,
+
+    // Economics (strings)
+    valuationStr: nstr(p['valuation']),
+    equityPctStr: nstr(p['equityOfferedPct'] ?? p['equityPct']),
+    minInvestmentStr: nstr(p['minInvestment'] ?? p['minimumInvestment']),
+    fundingGoalStr: nstr(p['fundingGoal']),
+    fundingCommittedStr: nstr(p['fundingCommitted']),
+    targetYieldPctStr: nstr(p['targetYieldPct']),
+    expectedAppreciationPctStr: nstr(p['expectedAppreciationPct']),
+
+    // Narrative
+    summary: s(p['summary']),
+    problem: s(p['problem']),
+    solution: s(p['solution']),
+    plan: s(p['plan']),
+    useOfFunds: s(p['useOfFunds']),
+    exitStrategy: s(p['exitStrategy']),
+    improvements: s(p['improvements']),
+    timeline: s(p['timeline']),
+    residentStory: s(p['residentStory']),
+    strategyTags: Array.isArray(p['strategyTags'])
+      ? (p['strategyTags'] as string[]).join(', ')
+      : s(p['strategyTags']),
+
+    // Media
+    heroImageUrl: s(p['heroImageUrl']),
+    offeringUrl: s(p['offeringUrl']),
+    gallery: Array.isArray(p['gallery']) ? (p['gallery'] as string[]) : [],
+
+    // source id for later overwrite
+    pitchId: (p['id'] as string) ?? undefined,
+  };
+}
+
+export default function EditPitchRedirect() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const [initial, setInitial] = React.useState<Pitch | null>(null);
-  const [notFound, setNotFound] = React.useState(false);
+  const [state, setState] = React.useState<'loading' | 'missing'>('loading');
 
   React.useEffect(() => {
     let on = true;
     (async () => {
-      try {
-        const p = await getPitchById(id);
-        if (!on) return;
-        if (p) setInitial(p);
-        else setNotFound(true);
-      } catch {
-        if (on) setNotFound(true);
+      const pitch = await getPitchById(id);
+      if (!on) return;
+
+      if (!pitch) {
+        setState('missing');
+        return;
       }
+
+      try {
+        const draft = toDraft(pitch as unknown as Record<string, unknown>);
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      } catch {
+        // ignore storage failures
+      }
+
+      router.replace('/resident/create/basics');
     })();
+
     return () => {
       on = false;
     };
-  }, [id]);
+  }, [id, router]);
 
-  if (notFound) {
+  if (state === 'missing') {
     return (
-      <div className="mx-auto max-w-3xl p-8 text-ink-800">
+      <div className="mx-auto max-w-3xl p-8">
         <h1 className="text-xl font-semibold">Pitch not found</h1>
-        <p className="mt-2">We couldn’t find a pitch with id <code>{id}</code>.</p>
-        <button
-          className="mt-4 rounded-lg border px-3 py-2"
-          onClick={() => router.push('/resident/dashboard')}
-        >
-          Back to dashboard
-        </button>
+        <p className="mt-2 text-ink-700">
+          We couldn’t find a pitch with id <code>{id}</code>.
+        </p>
       </div>
     );
   }
 
-  if (!initial) {
-    return <div className="mx-auto max-w-3xl p-8 text-ink-700">Loading…</div>;
-  }
-
-  // IMPORTANT: pass only stable, loaded data; no Date.now() here.
-  return <PitchWizardClient initial={initial} pitchId={initial.id} />;
+  return <div className="mx-auto max-w-3xl p-8 text-ink-700">Loading…</div>;
 }
