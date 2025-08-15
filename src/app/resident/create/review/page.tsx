@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { useDraft, numFromStr } from '@/lib/draft';
-import type { Pitch, PitchInput, PitchStatus } from '@/types/pitch';
+import type { PitchInput, PitchStatus } from '@/types/pitch';
 import { savePitch } from '@/lib/storage';
 
 const box = 'rounded-xl border border-ink-100 p-3';
