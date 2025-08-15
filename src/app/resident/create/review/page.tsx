@@ -2,116 +2,138 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
+import Section from '@/components/ui/Section';
+import { Card } from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
 import { useDraft, numFromStr } from '@/lib/draft';
-import type { PitchInput, PitchStatus } from '@/types/pitch';
 import { savePitch } from '@/lib/storage';
+import type { PitchInput } from '@/types/pitch';
 
-const box = 'rounded-xl border border-ink-100 p-3';
-const label = 'text-xs text-ink-600';
-const value = 'text-sm text-ink-900 font-medium';
+function buildPitchFromDraft(draft: ReturnType<typeof useDraft>['draft']): PitchInput {
+  return {
+    // basics
+    title: (draft.title || 'Untitled Pitch').trim(),
+    city: draft.city || '',
+    state: draft.state || '',
+    zip: draft.postalCode || '',
+
+    // minimum ticket
+    minimumInvestment: numFromStr(draft.minInvestmentStr) || 0,
+
+    // SEA model
+    referenceValuation: numFromStr(draft.valuationStr) || null,
+    fundingGoal: numFromStr(draft.fundingGoalStr) || null,
+    fundingCommitted: numFromStr(draft.fundingCommittedStr) || 0,
+    appreciationSharePct: numFromStr(draft.appreciationSharePctStr) || null,
+    horizonYears: numFromStr(draft.horizonYearsStr) || null,
+    buybackAllowed: draft.buybackAllowed,
+
+    // media / links
+    heroImageUrl: draft.heroImageUrl,
+    gallery: Array.isArray(draft.gallery) ? draft.gallery : [],
+    offeringUrl: draft.offeringUrl,
+
+    // workflow
+    status: 'review',
+  };
+}
 
 export default function ReviewStep() {
-  const { draft, reset } = useDraft();
   const router = useRouter();
+  const { draft, resetDraft } = useDraft(); // ← use resetDraft
   const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
-  async function handleSave(targetStatus: PitchStatus) {
+  const onSave = async () => {
     setBusy(true);
-
-    // Build a safe payload that only includes keys known to exist on your Pitch type.
-    const loose: Record<string, unknown> = {
-      id: draft.pitchId,
-      title: draft.title,
-      city: draft.city || undefined,
-      state: draft.state || undefined,
-      postalCode: draft.postalCode || undefined,
-      status: targetStatus,
-      minimumInvestment: numFromStr(draft.minInvestmentStr),
-      equityOfferedPct: numFromStr(draft.equityPctStr) ?? null,
-      expectedAppreciationPct: numFromStr(draft.expectedAppreciationPctStr) ?? null,
-      targetYieldPct: numFromStr(draft.targetYieldPctStr) ?? null,
-      summary: draft.summary || undefined,
-      problem: draft.problem || undefined,
-      solution: draft.solution || undefined,
-      plan: draft.plan || undefined,
-      useOfFunds: draft.useOfFunds || undefined,
-      exitStrategy: draft.exitStrategy || undefined,
-      improvements: draft.improvements || undefined,
-      timeline: draft.timeline || undefined,
-      residentStory: draft.residentStory || undefined,
-      strategyTags: draft.strategyTags
-        ? draft.strategyTags.split(',').map((x) => x.trim()).filter(Boolean)
-        : [],
-      heroImageUrl: draft.heroImageUrl || undefined,
-      offeringUrl: draft.offeringUrl || undefined,
-      gallery: draft.gallery,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-
-    const saved = await savePitch(loose as PitchInput);
-    reset();
-    setBusy(false);
-    router.push('/resident/dashboard');
-    return saved;
-  }
+    setError(null);
+    try {
+      const input = buildPitchFromDraft(draft);
+      await savePitch(input);
+      resetDraft();
+      router.push('/resident/dashboard');
+    } catch (e) {
+      setError('Sorry — something went wrong saving your pitch.');
+      console.error(e);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className={box}><div className={label}>Title</div><div className={value}>{draft.title || '—'}</div></div>
-        <div className={box}><div className={label}>Location</div><div className={value}>
-          {[draft.city, draft.state, draft.postalCode].filter(Boolean).join(', ') || '—'}
-        </div></div>
-        <div className={box}><div className={label}>Equity</div><div className={value}>
-          {draft.equityPctStr ? `${draft.equityPctStr}%` : '—'}
-        </div></div>
-        <div className={box}><div className={label}>Min investment</div><div className={value}>
-          {draft.minInvestmentStr ? `$${Number(draft.minInvestmentStr).toLocaleString()}` : '—'}
-        </div></div>
-        <div className={box}><div className={label}>Funding</div><div className={value}>
-          {draft.fundingGoalStr
-            ? `$${Number(draft.fundingCommittedStr || '0').toLocaleString()} / $${Number(draft.fundingGoalStr).toLocaleString()}`
-            : '—'}
-        </div></div>
-        <div className={box}><div className={label}>Yield target</div><div className={value}>
-          {draft.targetYieldPctStr ? `${draft.targetYieldPctStr}%` : '—'}
-        </div></div>
-        <div className={box}><div className={label}>Appreciation</div><div className={value}>
-          {draft.expectedAppreciationPctStr ? `${draft.expectedAppreciationPctStr}%` : '—'}
-        </div></div>
-        <div className={box + ' md:col-span-2'}>
-          <div className={label}>Tags</div>
-          <div className={value}>{draft.strategyTags || '—'}</div>
-        </div>
-      </div>
+    <main className="space-y-8">
+      <Section className="max-w-5xl mx-auto px-4 pt-6">
+        <h1 className="text-2xl font-semibold text-ink-900">Review & Save</h1>
+        <p className="mt-2 text-zinc-700">
+          Check your details, then save your pitch. You can publish after a quick review.
+        </p>
+      </Section>
 
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          className="rounded-xl bg-ink-900 text-white px-4 py-2"
-          disabled={busy}
-          onClick={() => handleSave('review')}
-        >
-          {busy ? 'Saving…' : 'Submit for review'}
-        </button>
-        <button
-          type="button"
-          className="rounded-xl border px-4 py-2"
-          disabled={busy}
-          onClick={() => handleSave('draft')}
-        >
-          Save as draft
-        </button>
-        <button
-          type="button"
-          className="rounded-xl border px-4 py-2"
-          disabled={busy}
-          onClick={() => handleSave('live')}
-        >
-          Go live
-        </button>
-      </div>
-    </div>
+      <Section className="max-w-5xl mx-auto px-4 pb-12">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className="p-5 lg:col-span-2 space-y-4">
+            <div>
+              <div className="text-xs uppercase tracking-wide text-zinc-500">Title</div>
+              <div className="text-ink-900 font-medium">{draft.title || 'Untitled Pitch'}</div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-6 text-sm">
+              <div>
+                <div className="text-zinc-500">Valuation</div>
+                <div className="text-ink-900">{draft.valuationStr || '—'}</div>
+              </div>
+              <div>
+                <div className="text-zinc-500">Min Investment</div>
+                <div className="text-ink-900">{draft.minInvestmentStr || '—'}</div>
+              </div>
+              <div>
+                <div className="text-zinc-500">Appreciation Share</div>
+                <div className="text-ink-900">
+                  {draft.appreciationSharePctStr ? `${draft.appreciationSharePctStr}%` : '—'}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-6 text-sm">
+              <div>
+                <div className="text-zinc-500">Funding Goal</div>
+                <div className="text-ink-900">{draft.fundingGoalStr || '—'}</div>
+              </div>
+              <div>
+                <div className="text-zinc-500">Committed</div>
+                <div className="text-ink-900">{draft.fundingCommittedStr || '—'}</div>
+              </div>
+              <div>
+                <div className="text-zinc-500">Horizon</div>
+                <div className="text-ink-900">
+                  {draft.horizonYearsStr ? `${draft.horizonYearsStr} yrs` : '—'}
+                </div>
+              </div>
+            </div>
+
+            <div className="text-sm text-zinc-600">
+              {draft.city ? `${draft.city}, ${draft.state || ''} ${draft.postalCode || ''}`.trim() : 'Location not set'}
+            </div>
+          </Card>
+
+          <Card className="p-5 space-y-4">
+            {error && <div className="text-sm text-red-600">{error}</div>}
+            <Button onClick={onSave} disabled={busy} className="w-full">
+              {busy ? 'Saving…' : 'Save pitch'}
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                resetDraft();
+                router.push('/resident/create/basics');
+              }}
+              className="w-full"
+            >
+              Start over
+            </Button>
+          </Card>
+        </div>
+      </Section>
+    </main>
   );
 }

@@ -1,105 +1,88 @@
 'use client';
 
+import * as React from 'react';
 import Image from 'next/image';
-import { ExternalLink } from 'lucide-react';
-import Button from '@/components/ui/Button';
-import { Card, CardBody } from '@/components/ui/Card';
+import Link from 'next/link';
 import type { Pitch } from '@/types/pitch';
-import { useRouter } from 'next/navigation';
-import { computeInvestorFit } from '@/lib/investorFit';
+import Button from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card'; // <-- named export
 
-const ALLOWED_IMAGE_HOSTS = new Set([
-  'dongardner.com',
-  'images.unsplash.com',
-  'placehold.co',
-  'cdn.redfin.com',
-  'cdn.pixabay.com',
-]);
-
-function usd(v?: number): string {
-  if (v == null) return '—';
-  try {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(v);
-  } catch {
-    return `$${Math.round(v).toLocaleString()}`;
-  }
-}
-
-function isDemoOffering(url?: string): boolean {
-  if (!url) return true;
-  try {
-    const u = new URL(url, typeof window !== 'undefined' ? window.location.origin : 'https://local');
-    return u.hostname.toLowerCase() === 'example.com';
-  } catch {
-    return true;
-  }
-}
-
-export default function ListingCard({
-  p, onView, matchScore,
-}: { p: Pitch; onView?: (pitch: Pitch) => void; matchScore?: number; }) {
-  const router = useRouter();
-  const img = p.heroImageUrl || `https://placehold.co/800x500/png?text=${encodeURIComponent(p.title)}`;
-  let unoptimized = false;
-  try { unoptimized = !ALLOWED_IMAGE_HOSTS.has(new URL(img).hostname); } catch { unoptimized = true; }
-
-  const committed = p.fundingCommitted ?? 0;
+export default function ListingCard({ p }: { p: Pitch }) {
   const goal = p.fundingGoal ?? 0;
-  const percent = goal > 0 ? Math.min(100, Math.max(0, Math.floor((committed / goal) * 100))) : 0;
-  const fullyFunded = goal > 0 && committed >= goal;
+  const committed = p.fundingCommitted ?? 0;
+  const progress = goal > 0 ? Math.min(100, Math.round((committed / goal) * 100)) : 0;
 
-  function handleInvestClick() {
-    const demo = isDemoOffering(p.offeringUrl);
-    if (demo) { router.push('/investors?demo=1'); return; }
-    try { window.open(p.offeringUrl as string, '_blank', 'noopener,noreferrer'); } catch {}
-  }
-
-  const fit = computeInvestorFit(p);
+  const chips: string[] = [];
+  if (p.appreciationSharePct != null) chips.push(`${p.appreciationSharePct}% AppShare`);
+  if (p.horizonYears != null) chips.push(`${p.horizonYears}y horizon`);
+  chips.push(p.buybackAllowed ? 'Buyback allowed' : 'Hold until exit');
 
   return (
-    <Card className="group overflow-hidden hover:shadow-soft transition">
-      <div className="relative w-full h-48 overflow-hidden">
-        <Image src={img} alt={p.title} fill sizes="(max-width: 768px) 100vw, 33vw" className="object-cover" unoptimized={unoptimized} />
-        <span className="absolute top-3 left-3 text-xs rounded-full bg-black/60 text-white px-2 py-1">{fit.label}</span>
-        {typeof matchScore === 'number' ? (
-          <span className="absolute top-3 right-3 text-xs rounded-full bg-white/90 text-ink-900 px-2 py-1">Match {matchScore}%</span>
-        ) : null}
+    <Card className="overflow-hidden">
+      <div className="relative aspect-[16/9] bg-zinc-100">
+        {p.heroImageUrl ? (
+          <Image
+            src={p.heroImageUrl}
+            alt={p.title}
+            fill
+            className="object-cover"
+            unoptimized
+            priority={false}
+          />
+        ) : (
+          <div className="absolute inset-0 grid place-items-center text-zinc-400">
+            Listing Preview
+          </div>
+        )}
       </div>
 
-      <CardBody className="space-y-3">
-        <h3 className="text-base font-semibold line-clamp-2 text-ink-900">{p.title}</h3>
-        {p.summary ? <p className="text-sm text-ink-700 line-clamp-2">{p.summary}</p> : null}
-
-        <div>
-          <div className="rounded-2xl bg-ink-100 h-3 overflow-hidden" aria-label="Funding progress">
-            <div className={`h-3 ${fullyFunded ? 'bg-green-600' : 'bg-ink-900'} transition-all`} style={{ width: `${percent}%` }} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} />
-          </div>
-          <div className="mt-1 flex items-center justify-between text-xs text-ink-700">
-            <span>{percent}% funded</span>
-            <span>{goal > 0 ? <>{usd(committed)} / {usd(goal)}</> : 'Goal not set'}</span>
-          </div>
-        </div>
-
-        <dl className="grid grid-cols-3 gap-3 text-sm">
-          <div className="rounded-xl bg-ink-50 p-2 text-center"><dt className="text-ink-600">Valuation</dt><dd className="font-medium text-ink-900">{usd(p.valuation)}</dd></div>
-          <div className="rounded-xl bg-ink-50 p-2 text-center"><dt className="text-ink-600">Min</dt><dd className="font-medium text-ink-900">{p.minInvestment != null ? `$${p.minInvestment.toLocaleString()}` : '—'}</dd></div>
-          <div className="rounded-xl bg-ink-50 p-2 text-center"><dt className="text-ink-600">Equity</dt><dd className="font-medium text-ink-900">{p.equityPct != null ? `${p.equityPct}%` : '—'}</dd></div>
-        </dl>
-
-        <div className="flex items-center gap-2">
-          {onView ? <Button variant="secondary" onClick={() => onView(p)}>View</Button> : null}
-          <Button onClick={handleInvestClick} disabled={fullyFunded}>
-            <span className="inline-flex items-center gap-2">
-              {fullyFunded ? 'Fully Funded' : isDemoOffering(p.offeringUrl) ? 'Demo — Learn How' : 'Invest / Learn More'}
-              <ExternalLink className="size-4" />
+      <div className="p-4 space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {chips.map((c) => (
+            <span key={c} className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs text-zinc-700">
+              {c}
             </span>
-          </Button>
+          ))}
         </div>
 
-        <div className="text-xs text-ink-600">
-          {[p.city, p.state].filter(Boolean).join(', ')} {p.postalCode ? ` ${p.postalCode}` : ''}
+        <div className="text-lg font-semibold text-ink-900">{p.title}</div>
+        <div className="text-xs text-zinc-600">
+          {p.city && p.state ? `${p.city}, ${p.state}` : p.zip ? p.zip : ''}
         </div>
-      </CardBody>
+
+        {goal > 0 && (
+          <div className="mt-1">
+            <div className="flex justify-between text-xs text-zinc-600">
+              <span>{progress}% funded</span>
+              <span>Goal {formatCurrency(goal)}</span>
+            </div>
+            <div className="mt-1 h-2 w-full rounded bg-zinc-200">
+              <div
+                className="h-2 rounded bg-ink-900 transition-all"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="pt-2">
+          {p.offeringUrl ? (
+            <Link href={p.offeringUrl} target="_blank" rel="noreferrer">
+              <Button>Demo — Learn How</Button>
+            </Link>
+          ) : (
+            <Button disabled>Demo — Learn How</Button>
+          )}
+        </div>
+      </div>
     </Card>
   );
+}
+
+function formatCurrency(n: number) {
+  return n.toLocaleString(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  });
 }

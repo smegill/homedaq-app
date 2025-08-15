@@ -1,109 +1,98 @@
 'use client';
 
 import * as React from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
+import Section from '@/components/ui/Section';
+import { Card } from '@/components/ui/Card';
+import { useDraft } from '@/lib/draft';
 import { getPitchById } from '@/lib/storage';
-import type { Draft } from '@/lib/draft';
-import type { PitchStatus } from '@/types/pitch';
 
-const DRAFT_KEY = 'homedaq.pitchDraft.v1';
 
-// helpers
-const s = (v: unknown): string => (typeof v === 'string' ? v : '');
-const nstr = (v: unknown): string =>
-  typeof v === 'number' ? String(v) : typeof v === 'string' && v.trim() !== '' ? v : '';
-
-const isPitchStatus = (v: unknown): v is PitchStatus =>
-  v === 'draft' || v === 'review' || v === 'live' || v === 'funded' || v === 'closed';
-
-function toDraft(p: Record<string, unknown>): Draft {
-  const postal = (p['postalCode'] as string) ?? (p['zip'] as string) ?? '';
-  const status: PitchStatus = isPitchStatus(p['status']) ? p['status'] : 'review';
-
-  return {
-    // Basics
-    title: s(p['title']),
-    address1: s(p['address1']),
-    address2: s(p['address2']),
-    city: s(p['city']),
-    state: s(p['state']),
-    postalCode: postal,
-    status,
-
-    // Economics (strings)
-    valuationStr: nstr(p['valuation']),
-    equityPctStr: nstr(p['equityOfferedPct'] ?? p['equityPct']),
-    minInvestmentStr: nstr(p['minInvestment'] ?? p['minimumInvestment']),
-    fundingGoalStr: nstr(p['fundingGoal']),
-    fundingCommittedStr: nstr(p['fundingCommitted']),
-    targetYieldPctStr: nstr(p['targetYieldPct']),
-    expectedAppreciationPctStr: nstr(p['expectedAppreciationPct']),
-
-    // Narrative
-    summary: s(p['summary']),
-    problem: s(p['problem']),
-    solution: s(p['solution']),
-    plan: s(p['plan']),
-    useOfFunds: s(p['useOfFunds']),
-    exitStrategy: s(p['exitStrategy']),
-    improvements: s(p['improvements']),
-    timeline: s(p['timeline']),
-    residentStory: s(p['residentStory']),
-    strategyTags: Array.isArray(p['strategyTags'])
-      ? (p['strategyTags'] as string[]).join(', ')
-      : s(p['strategyTags']),
-
-    // Media
-    heroImageUrl: s(p['heroImageUrl']),
-    offeringUrl: s(p['offeringUrl']),
-    gallery: Array.isArray(p['gallery']) ? (p['gallery'] as string[]) : [],
-
-    // source id for later overwrite
-    pitchId: (p['id'] as string) ?? undefined,
-  };
+function s(n?: number | null): string {
+  return n == null ? '' : String(n);
 }
 
 export default function EditPitchRedirect() {
-  const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const [state, setState] = React.useState<'loading' | 'missing'>('loading');
+  const params = useParams<{ id: string }>();
+  const id = (params?.id ?? '') as string;
+
+  const { resetDraft, setField } = useDraft();
+  const [notFound, setNotFound] = React.useState(false);
 
   React.useEffect(() => {
-    let on = true;
-    (async () => {
-      const pitch = await getPitchById(id);
-      if (!on) return;
+    let alive = true;
+    if (!id) return;
 
-      if (!pitch) {
-        setState('missing');
+    Promise.resolve(getPitchById(id)).then((p) => {
+      if (!alive) return;
+
+      if (!p) {
+        setNotFound(true);
         return;
       }
 
-      try {
-        const draft = toDraft(pitch as unknown as Record<string, unknown>);
-        localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-      } catch {
-        // ignore storage failures
-      }
+      // Map Pitch -> Draft (SEA model)
+      resetDraft();
+
+      // Basics / location
+      setField('title', p.title || 'Untitled Pitch');
+      setField('address1', '');
+      setField('address2', '');
+      setField('city', p.city || '');
+      setField('state', p.state || '');
+      setField('postalCode', p.zip || '');
+
+      // Media / external (force strings to satisfy strict typing)
+      setField('heroImageUrl', p.heroImageUrl ?? '');
+      setField('gallery', Array.isArray(p.gallery) ? p.gallery : []);
+      setField('offeringUrl', p.offeringUrl ?? '');
+
+      // Economics (strings)
+      setField('valuationStr', s(p.referenceValuation));
+      setField('minInvestmentStr', s(p.minimumInvestment));
+      setField('fundingGoalStr', s(p.fundingGoal));
+      setField('fundingCommittedStr', s(p.fundingCommitted));
+      setField('appreciationSharePctStr', s(p.appreciationSharePct));
+      setField('horizonYearsStr', s(p.horizonYears));
+
+      // Options
+      setField('buybackAllowed', !!p.buybackAllowed);
+
+      // Workflow
+      setField('status', p.status);
 
       router.replace('/resident/create/basics');
-    })();
+    });
 
     return () => {
-      on = false;
+      alive = false;
     };
-  }, [id, router]);
+  }, [id, resetDraft, setField, router]);
 
-  if (state === 'missing') {
+  if (notFound) {
     return (
-      <div className="mx-auto max-w-3xl p-8">
-        <h1 className="text-xl font-semibold">Pitch not found</h1>
-        <p className="mt-2 text-ink-700">
-          We couldn’t find a pitch with id <code>{id}</code>.
-        </p>
-      </div>
+      <main className="max-w-3xl mx-auto px-4">
+        <Section className="pt-10">
+          <Card className="p-6">
+            <h1 className="text-xl font-semibold text-ink-900">Pitch not found</h1>
+            <p className="mt-2 text-zinc-700">
+              We couldn’t find that pitch. It may have been removed.
+            </p>
+          </Card>
+        </Section>
+      </main>
     );
   }
 
-  return <div className="mx-auto max-w-3xl p-8 text-ink-700">Loading…</div>;
+  return (
+    <main className="max-w-3xl mx-auto px-4">
+      <Section className="pt-10">
+        <Card className="p-6">
+          <h1 className="text-xl font-semibold text-ink-900">Opening your pitch…</h1>
+          <p className="mt-2 text-zinc-700">One moment while we load your details.</p>
+        </Card>
+      </Section>
+    </main>
+  );
 }

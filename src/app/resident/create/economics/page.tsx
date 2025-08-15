@@ -1,127 +1,159 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
 import { useDraft } from '@/lib/draft';
-
-const input =
-  'w-full rounded-2xl border border-ink-200 bg-white px-3 py-2 text-ink-900 placeholder-ink-400 outline-none focus:ring-2 focus:ring-brand-500';
-
-const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
+import LiveListingPreview from '../_components/LiveListingPreview';
 
 export default function EconomicsStep() {
   const { draft, setField } = useDraft();
-  const router = useRouter();
 
-  const equity = clamp(Number(draft.equityPctStr || '0'), 0, 100);
+  const input =
+    'w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-[15px] leading-6 outline-none focus:border-zinc-500 focus:ring-0';
+  const label = 'text-sm font-medium text-zinc-800';
+  const box = 'rounded-2xl border border-zinc-200 bg-white p-4';
+
+  const appShare = toNum(draft.appreciationSharePctStr);
+  const rv = toNum(draft.valuationStr); // reuse valuationStr as Reference Valuation (RV)
+  const goal = toNum(draft.fundingGoalStr);
+  const horizon = toNum(draft.horizonYearsStr);
 
   return (
-    <form
-      className="space-y-6"
-      onSubmit={(e) => {
-        e.preventDefault();
-        router.push('/resident/create/narrative');
-      }}
-    >
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <label className="space-y-1">
-          <span className="text-sm text-ink-600">Valuation</span>
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* LEFT: form */}
+      <div className="space-y-6">
+        <div className={box}>
+          <div className={label}>Reference valuation (RV)</div>
           <input
-            className={input}
-            inputMode="numeric"
+            type="number"
+            className={input + ' mt-2'}
+            placeholder="e.g. 350000"
             value={draft.valuationStr}
-            onChange={(e) => setField('valuationStr', e.target.value.replace(/[^\d]/g, ''))}
-            placeholder="350000"
+            onChange={(e) => setField('valuationStr', e.target.value)}
           />
-        </label>
+          <p className="mt-2 text-xs text-zinc-600">
+            Use a recent appraisal or an AVM. Investors’ upside is measured relative to this.
+          </p>
+        </div>
 
-        <label className="space-y-1">
-          <span className="text-sm text-ink-600">Equity offered (%)</span>
+        <div className={box}>
+          <div className={label}>Funding goal</div>
           <input
-            className={input}
-            inputMode="numeric"
-            value={draft.equityPctStr}
-            onChange={(e) => {
-              const raw = e.target.value.replace(/[^\d.]/g, '');
-              setField('equityPctStr', raw === '' ? '' : String(clamp(Number(raw), 0, 100)));
-            }}
-            placeholder="10"
+            type="number"
+            className={input + ' mt-2'}
+            placeholder="e.g. 60000"
+            value={draft.fundingGoalStr}
+            onChange={(e) => setField('fundingGoalStr', e.target.value)}
           />
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={equity}
-            onChange={(e) => setField('equityPctStr', (e.target as HTMLInputElement).value)}
-            onInput={(e) => setField('equityPctStr', (e.target as HTMLInputElement).value)}
-            className="w-full"
-          />
-        </label>
+        </div>
 
-        <label className="space-y-1">
-          <span className="text-sm text-ink-600">Minimum investment</span>
+        <div className={box}>
+          <div className={label}>Appreciation share (%)</div>
           <input
-            className={input}
-            inputMode="numeric"
+            type="number"
+            className={input + ' mt-2'}
+            placeholder="e.g. 12"
+            value={draft.appreciationSharePctStr}
+            onChange={(e) => setField('appreciationSharePctStr', e.target.value)}
+          />
+          <p className="mt-2 text-xs text-zinc-600">
+            Investors receive this share of appreciation above RV at exit (sale/refi/buyback).
+          </p>
+        </div>
+
+        <div className={box}>
+          <div className={label}>Investment horizon (years)</div>
+          <input
+            type="number"
+            className={input + ' mt-2'}
+            placeholder="e.g. 5"
+            value={draft.horizonYearsStr}
+            onChange={(e) => setField('horizonYearsStr', e.target.value)}
+          />
+        </div>
+
+        <div className={box}>
+          <label className="inline-flex items-center gap-3">
+            <input
+              type="checkbox"
+              checked={!!draft.buybackAllowed}
+              onChange={(e) => setField('buybackAllowed', e.target.checked)}
+            />
+            <span className={label}>Resident buyback allowed</span>
+          </label>
+          <p className="mt-2 text-xs text-zinc-600">
+            Resident can repurchase by paying principal + SEA share at the then-current valuation.
+          </p>
+        </div>
+
+        <div className={box}>
+          <div className={label}>Minimum investment (optional)</div>
+          <input
+            type="number"
+            className={input + ' mt-2'}
+            placeholder="e.g. 2500"
             value={draft.minInvestmentStr}
-            onChange={(e) => setField('minInvestmentStr', e.target.value.replace(/[^\d]/g, ''))}
-            placeholder="5000"
+            onChange={(e) => setField('minInvestmentStr', e.target.value)}
           />
-        </label>
-
-        <label className="space-y-1">
-          <span className="text-sm text-ink-600">Target dividend yield (%)</span>
-          <input
-            className={input}
-            inputMode="numeric"
-            value={draft.targetYieldPctStr}
-            onChange={(e) => setField('targetYieldPctStr', e.target.value.replace(/[^\d.]/g, ''))}
-            placeholder="5"
-          />
-        </label>
-
-        <label className="space-y-1">
-          <span className="text-sm text-ink-600">Expected appreciation (%)</span>
-          <input
-            className={input}
-            inputMode="numeric"
-            value={draft.expectedAppreciationPctStr}
-            onChange={(e) => setField('expectedAppreciationPctStr', e.target.value.replace(/[^\d.]/g, ''))}
-            placeholder="3"
-          />
-        </label>
-
-        <div className="space-y-2 md:col-span-2">
-          <div className="text-sm text-ink-600">Funding goal & progress</div>
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              className={input}
-              inputMode="numeric"
-              value={draft.fundingGoalStr}
-              onChange={(e) => setField('fundingGoalStr', e.target.value.replace(/[^\d]/g, ''))}
-              placeholder="Goal (e.g., 250000)"
-            />
-            <input
-              className={input}
-              inputMode="numeric"
-              value={draft.fundingCommittedStr}
-              onChange={(e) => setField('fundingCommittedStr', e.target.value.replace(/[^\d]/g, ''))}
-              placeholder="Committed (e.g., 75000)"
-            />
-          </div>
         </div>
       </div>
 
-      <div className="flex justify-between">
-        <button
-          type="button"
-          className="rounded-xl border px-4 py-2"
-          onClick={() => history.back()}
-        >
-          Back
-        </button>
-        <button className="rounded-xl bg-ink-900 text-white px-4 py-2">Continue</button>
+      {/* RIGHT: single live preview */}
+      <div className="lg:sticky lg:top-4 h-fit">
+        <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+          <LiveListingPreview />
+          <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-zinc-700">
+            <Scenario label="0% HPA" rv={rv} share={appShare} goal={goal} horizon={horizon} rate={0} />
+            <Scenario label="2% HPA" rv={rv} share={appShare} goal={goal} horizon={horizon} rate={0.02} />
+            <Scenario label="5% HPA" rv={rv} share={appShare} goal={goal} horizon={horizon} rate={0.05} />
+            <Scenario label="8% HPA" rv={rv} share={appShare} goal={goal} horizon={horizon} rate={0.08} />
+          </div>
+          <p className="mt-2 text-xs text-zinc-500">
+            Illustration only. Not investment advice. Actual outcomes vary.
+          </p>
+        </div>
       </div>
-    </form>
+    </div>
   );
 }
+
+function Scenario({
+  label,
+  rv,
+  share,
+  goal,
+  horizon,
+  rate,
+}: {
+  label: string;
+  rv: number;
+  share: number;
+  goal: number;
+  horizon: number;
+  rate: number; // annual HPA
+}) {
+  if (!rv || !share || !horizon) {
+    return (
+      <div className="rounded-lg border border-zinc-200 p-3">
+        <div className="font-medium">{label}</div>
+        <div className="text-xs text-zinc-600">Set RV, share, and horizon</div>
+      </div>
+    );
+  }
+  const exit = rv * Math.pow(1 + rate, Math.max(0, horizon));
+  const upside = Math.max(0, exit - rv);
+  const investorApp = (share / 100) * upside;
+  const proceeds = (goal || 0) + investorApp;
+
+  return (
+    <div className="rounded-lg border border-zinc-200 p-3">
+      <div className="font-medium">{label}</div>
+      <div className="text-xs text-zinc-600">Exit value ~ ${fmt(exit)}</div>
+      <div className="mt-1 text-ink-900">Investor total ~ ${fmt(proceeds)}</div>
+    </div>
+  );
+}
+
+// utils
+const toNum = (s?: string) => (s ? Number(s) || 0 : 0);
+const fmt = (n: number) =>
+  n.toLocaleString(undefined, { maximumFractionDigits: 0 });

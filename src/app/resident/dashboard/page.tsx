@@ -1,81 +1,148 @@
 'use client';
 
 import * as React from 'react';
-import Section from '@/components/ui/Section';
-import { Card, CardBody } from '@/components/ui/Card';
-import Button from '@/components/ui/Button';
 import Link from 'next/link';
+import Section from '@/components/ui/Section';
+import { Card } from '@/components/ui/Card';
 import { getPitches, subscribe } from '@/lib/storage';
 import type { Pitch } from '@/types/pitch';
 
-export default function ResidentDashboardPage() {
+function fmtMoney(n?: number | null) {
+  if (n == null) return '—';
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(n);
+}
+
+function pct(a?: number | null, b?: number | null) {
+  if (!a || !b || b <= 0) return 0;
+  const p = Math.max(0, Math.min(1, a / b));
+  return Math.round(p * 100);
+}
+
+export default function ResidentDashboard() {
   const [rows, setRows] = React.useState<Pitch[]>([]);
 
   React.useEffect(() => {
-    setRows(getPitches());
-    const off = subscribe(setRows);
-    return () => off();
+    let alive = true;
+
+    // Works whether getPitches returns Pitch[] or Promise<Pitch[]>
+    Promise.resolve(getPitches()).then((ps) => {
+      if (!alive) return;
+      setRows(ps as Pitch[]);
+    });
+
+    const unsub = subscribe((ps: Pitch[]) => {
+      if (!alive) return;
+      setRows(ps);
+    });
+
+    return () => {
+      alive = false;
+      unsub?.();
+    };
   }, []);
 
   return (
-    <Section className="max-w-5xl mx-auto py-10 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-ink-900">Your Pitches</h1>
-        {/* Button without asChild */}
-        <Link href="/resident/create">
-          <Button>Start a Pitch</Button>
-        </Link>
-      </div>
+    <main className="space-y-8">
+      <Section className="max-w-6xl mx-auto px-4 pt-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-semibold text-ink-900">Your pitches</h1>
+          <Link
+            href="/resident/create/basics"
+            className="rounded-xl bg-ink-900 text-white px-4 py-2 text-sm hover:bg-ink-800 transition"
+          >
+            Start a new pitch
+          </Link>
+        </div>
+        <p className="mt-2 text-zinc-700">
+          Draft, review, and publish founder-style pitches. Investors back deals for shared
+          appreciation—no bank interest.
+        </p>
+      </Section>
 
-      {rows.length === 0 ? (
-        <Card>
-          <CardBody>
-            <div className="text-ink-700">You don’t have any pitches yet.</div>
-          </CardBody>
-        </Card>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-ink-600">
-                <th className="py-2 pr-4">Title</th>
-                <th className="py-2 pr-4">Status</th>
-                <th className="py-2 pr-4">Valuation</th>
-                <th className="py-2 pr-4">Min Inv</th>
-                <th className="py-2 pr-4">Equity</th>
-                <th className="py-2 pr-4"></th>
+      <Section className="max-w-6xl mx-auto px-4 pb-12">
+        <Card className="p-0 overflow-hidden">
+          <table className="min-w-full text-sm">
+            <thead className="bg-zinc-50 text-zinc-600">
+              <tr>
+                <th className="text-left font-medium px-5 py-3">Title</th>
+                <th className="text-left font-medium px-5 py-3">Status</th>
+                <th className="text-left font-medium px-5 py-3">Valuation</th>
+                <th className="text-left font-medium px-5 py-3">Min Invest</th>
+                <th className="text-left font-medium px-5 py-3">App Share</th>
+                <th className="text-left font-medium px-5 py-3">Funding</th>
+                <th className="text-left font-medium px-5 py-3">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((p) => (
-                <tr key={p.id} className="border-t border-ink-100">
-                  <td className="py-2 pr-4">{p.title}</td>
-                  <td className="py-2 pr-4">{p.status}</td>
-                  <td className="py-2 pr-4">
-                    {p.valuation != null
-                      ? new Intl.NumberFormat('en-US', {
-                          style: 'currency',
-                          currency: 'USD',
-                          maximumFractionDigits: 0,
-                        }).format(p.valuation)
-                      : '—'}
-                  </td>
-                  <td className="py-2 pr-4">
-                    {p.minInvestment != null ? `$${p.minInvestment.toLocaleString()}` : '—'}
-                  </td>
-                  <td className="py-2 pr-4">{p.equityPct != null ? `${p.equityPct}%` : '—'}</td>
-                  <td className="py-2 pr-4">
-                    {/* Button without asChild */}
-                    <Link href={`/resident/edit/${p.id}`}>
-                      <Button variant="secondary">Edit</Button>
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-5 py-10 text-center text-zinc-500">
+                    No pitches yet.{' '}
+                    <Link href="/resident/create/basics" className="underline">
+                      Create your first pitch
                     </Link>
+                    .
                   </td>
                 </tr>
-              ))}
+              ) : (
+                rows.map((p) => {
+                  const progress = pct(p.fundingCommitted, p.fundingGoal);
+                  return (
+                    <tr key={p.id} className="border-t border-zinc-200">
+                      <td className="px-5 py-3">
+                        <div className="font-medium text-ink-900">{p.title}</div>
+                        <div className="text-xs text-zinc-500">
+                          {[p.city, p.state, p.zip].filter(Boolean).join(', ')}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">{p.status}</td>
+                      <td className="px-5 py-3">{fmtMoney(p.referenceValuation)}</td>
+                      <td className="px-5 py-3">{fmtMoney(p.minimumInvestment)}</td>
+                      <td className="px-5 py-3">
+                        {p.appreciationSharePct != null ? `${p.appreciationSharePct}%` : '—'}
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-28 h-2 rounded bg-zinc-200">
+                            <div
+                              className="h-2 rounded bg-ink-900"
+                              style={{ width: `${progress}%` }}
+                            />
+                          </div>
+                          <div className="text-xs text-zinc-600">{progress}%</div>
+                        </div>
+                        <div className="text-xs text-zinc-500 mt-1">
+                          {fmtMoney(p.fundingCommitted)} / {fmtMoney(p.fundingGoal)}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-3">
+                          <Link
+                            href={`/resident/edit/${p.id}`}
+                            className="text-ink-900 hover:underline"
+                          >
+                            Edit
+                          </Link>
+                          <Link
+                            href="/resident/create/basics"
+                            className="text-zinc-600 hover:underline"
+                          >
+                            Duplicate
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
-        </div>
-      )}
-    </Section>
+        </Card>
+      </Section>
+    </main>
   );
 }

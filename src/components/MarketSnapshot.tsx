@@ -44,7 +44,6 @@ export default function MarketSnapshot({ zip }: { zip: string }) {
 
   React.useEffect(() => {
     // Build tag so we can verify in prod console
-    // eslint-disable-next-line no-console
     console.log('MarketSnapshot build tag: 2025-08-12-05');
 
     if (!zip || !/^\d{5}$/.test(zip)) {

@@ -1,104 +1,110 @@
+// src/components/InvestorPrefsForm.tsx
 'use client';
 
 import * as React from 'react';
-import { Card, CardBody } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { getPrefs, setPrefs, subscribePrefs, type InvestorPrefs } from '@/lib/prefs';
-import type { InvestorType } from '@/lib/investorFit';
+import type { InvestorPersona } from '@/lib/investorFit';
 import { INVESTOR_LABELS } from '@/lib/investorFit';
 
-type Choice = { type: InvestorType; label: string; blurb: string };
+type Choice = { type: InvestorPersona; label: string; blurb: string };
 
 const CHOICES: Choice[] = [
-  { type: 'MaxReturn',       label: INVESTOR_LABELS.MaxReturn,       blurb: 'Highest total gain' },
-  { type: 'GrowthUpside',    label: INVESTOR_LABELS.GrowthUpside,    blurb: 'Build equity over time' },
-  { type: 'SteadyIncome',    label: INVESTOR_LABELS.SteadyIncome,    blurb: 'Reliable cash yield' },
-  { type: 'BalancedBlend',   label: INVESTOR_LABELS.BalancedBlend,   blurb: 'Some yield + growth' },
-  { type: 'QuickFlip',       label: INVESTOR_LABELS.QuickFlip,       blurb: 'Short-duration resale' },
-  { type: 'CommunityImpact', label: INVESTOR_LABELS.CommunityImpact, blurb: 'Resident-first outcomes' },
+  {
+    type: 'Growth First',
+    label: INVESTOR_LABELS['Growth First'],
+    blurb: 'Chases upside via appreciation share and longer horizons.',
+  },
+  {
+    type: 'Income First',
+    label: INVESTOR_LABELS['Income First'],
+    blurb: 'Prefers predictable income; de-emphasized in shared-equity deals.',
+  },
+  {
+    type: 'Balanced Blend',
+    label: INVESTOR_LABELS['Balanced Blend'],
+    blurb: 'Reasonable upside with moderate risk.',
+  },
+  {
+    type: 'Community Backer',
+    label: INVESTOR_LABELS['Community Backer'],
+    blurb: 'Impact-minded; likes human stories and buy-back paths.',
+  },
+  {
+    type: 'Steady Shelter',
+    label: INVESTOR_LABELS['Steady Shelter'],
+    blurb: 'Capital preservation first; modest targets, shorter horizons.',
+  },
+  {
+    type: 'Value-Add / Flip',
+    label: INVESTOR_LABELS['Value-Add / Flip'],
+    blurb: 'Renovations/ADUs/cosmetic uplift potential.',
+  },
 ];
 
 export default function InvestorPrefsForm() {
-  const [prefs, setLocal] = React.useState<InvestorPrefs>(getPrefs());
-  const [mounted, setMounted] = React.useState(false);
-  React.useEffect(() => setMounted(true), []);
-  React.useEffect(() => subscribePrefs(setLocal), []);
+  const [prefs, setLocal] = React.useState<InvestorPrefs>(() => getPrefs());
+  const [saving, setSaving] = React.useState(false);
 
-  function toggle(t: InvestorType) {
-    const cur = new Set(prefs.investorTypes ?? []);
-    cur.has(t) ? cur.delete(t) : cur.add(t);
-    setPrefs({ ...prefs, investorTypes: Array.from(cur) });
+  React.useEffect(() => {
+    const unsub = subscribePrefs((p) => setLocal(p));
+    return () => unsub();
+  }, []);
+
+  function toggle(type: InvestorPersona) {
+    setLocal((prev) => {
+      const current = new Set(prev.personas ?? []);
+      current.has(type) ? current.delete(type) : current.add(type);
+      const next: InvestorPrefs = { ...prev, personas: Array.from(current) as InvestorPersona[] };
+      // optimistic write
+      void setPrefs(next);
+      return next;
+    });
   }
 
+  async function saveNow() {
+    setSaving(true);
+    try {
+      await setPrefs(prefs);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const selected = new Set(prefs.personas ?? []);
+
   return (
-    <Card>
-      <CardBody className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-ink-900">Your Preferences</h2>
-            <p className="text-sm text-ink-600">Choose 1–3 investor types and set optional filters.</p>
-          </div>
-          <Button
-            variant="secondary"
-            onClick={() => setPrefs({ investorTypes: [], zip: undefined, minInvestment: undefined })}
-          >
-            Reset
-          </Button>
-        </div>
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {CHOICES.map((c) => {
+          const active = selected.has(c.type);
+          return (
+            <button
+              key={c.type}
+              type="button"
+              onClick={() => toggle(c.type)}
+              className={[
+                'rounded-2xl border p-4 text-left transition',
+                active ? 'border-ink-900 bg-ink-900 text-white' : 'border-zinc-300 bg-white hover:border-ink-300',
+              ].join(' ')}
+            >
+              <div className="font-medium">{c.label}</div>
+              <div className={active ? 'text-white/80 text-sm mt-1' : 'text-zinc-600 text-sm mt-1'}>{c.blurb}</div>
+            </button>
+          );
+        })}
+      </div>
 
-        {/* Investor type chips */}
-        <div className="flex flex-wrap gap-2">
-          {CHOICES.map((c) => {
-            const active = mounted && (prefs.investorTypes ?? []).includes(c.type);
-            return (
-              <button
-                key={c.type}
-                type="button"
-                onClick={() => toggle(c.type)}
-                className={`px-3 py-1.5 rounded-full border text-sm transition ${
-                  active ? 'bg-ink-900 text-white' : 'bg-white'
-                }`}
-                aria-pressed={active}
-                title={c.blurb}
-              >
-                {c.label}
-              </button>
-            );
-          })}
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-zinc-600">
+          {selected.size > 0
+            ? `${selected.size} preference${selected.size === 1 ? '' : 's'} selected`
+            : 'Choose one or more investor types you’re interested in.'}
         </div>
-
-        {/* ZIP + Min investment */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label className="space-y-1">
-            <span className="text-sm text-ink-700">ZIP (optional)</span>
-            <input
-              inputMode="numeric"
-              maxLength={5}
-              value={mounted ? (prefs.zip ?? '') : ''}
-              onChange={(e) => {
-                const zip = e.target.value.replace(/\D/g, '').slice(0, 5);
-                setPrefs({ ...prefs, zip: zip || undefined });
-              }}
-              placeholder="e.g., 19103"
-              className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-brand-500"
-            />
-          </label>
-
-          <label className="space-y-1">
-            <span className="text-sm text-ink-700">Min investment ≤ (USD)</span>
-            <input
-              inputMode="numeric"
-              value={mounted && prefs.minInvestment != null ? String(prefs.minInvestment) : ''}
-              onChange={(e) => {
-                const v = e.target.value.replace(/\D/g, '');
-                setPrefs({ ...prefs, minInvestment: v ? Number(v) : undefined });
-              }}
-              placeholder="e.g., 10000"
-              className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-brand-500"
-            />
-          </label>
-        </div>
-      </CardBody>
-    </Card>
+        <Button onClick={saveNow} disabled={saving} variant="primary">
+          {saving ? 'Saving…' : 'Save preferences'}
+        </Button>
+      </div>
+    </div>
   );
 }

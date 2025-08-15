@@ -1,38 +1,59 @@
-export type PitchStatus = 'draft' | 'review' | 'live' | 'funded' | 'closed' | 'archived';
-export type RiskProfile = 'Balanced' | 'Yield' | 'Growth';
+// src/types/pitch.ts
 
+export type PitchStatus = 'draft' | 'review' | 'live' | 'funded' | 'closed';
+
+/** Personas used across the app for labels & matching. */
+export type InvestorPersona =
+  | 'Growth First'
+  | 'Income First'
+  | 'Balanced Blend'
+  | 'Community Backer'
+  | 'Steady Shelter'
+  | 'Value-Add / Flip';
+
+/**
+ * Unified Pitch type: supports existing listing card fields + new wizard (narrative/economics).
+ * Many properties are optional so legacy data still validates.
+ */
 export interface Pitch {
+  // Identity
   id: string;
   title: string;
 
-  // Location
+  // Location (legacy + new)
   address1?: string;
   address2?: string;
   city?: string;
   state?: string;
-  postalCode?: string;
+  zip?: string;          // legacy
+  postalCode?: string;   // new
 
-  // Core economics
-  valuation?: number;       // asking/target valuation for the property/LLC
-  minInvestment?: number;   // minimum a single investor can put in
-  equityPct?: number;       // equity offered to outside investors (0–100)
-
-  // Funding progress
-  fundingGoal?: number;         // total target to raise (USD)
-  fundingCommitted?: number;    // amount committed so far (USD)
-
-  // Presentation
-  summary?: string;
+  // Media / links
   heroImageUrl?: string;
   gallery?: string[];
-
-  // External raise link (outbound)
   offeringUrl?: string;
 
-  // Marketplace state
-  status: PitchStatus;
+  // Economics (legacy + new)
+  price?: number;                       // legacy
+  valuation?: number | null;            // new
+  referenceValuation?: number | null;   // baseline for appreciation
+  minimumInvestment?: number;           // canonical legacy
+  minInvestment?: number;               // alias accepted by form
+  equityOfferedPct?: number | null;
+  expectedAppreciationPct?: number | null;
+  appreciationSharePct?: number | null; // investor share of appreciation
+  targetYieldPct?: number | null;
 
-  // Founder-style narrative
+  // Holding / options (new)
+  horizonYears?: number | null;         // expected hold
+  buybackAllowed?: boolean;             // resident buy-back feature
+
+  // Funding progress (new)
+  fundingGoal?: number | null;
+  fundingCommitted?: number | null;
+
+  // Narrative (new)
+  summary?: string;
   problem?: string;
   solution?: string;
   plan?: string;
@@ -41,13 +62,17 @@ export interface Pitch {
   improvements?: string;
   timeline?: string;
   residentStory?: string;
+
+  // Tagging / fit
+  riskProfile?: 'Balanced' | 'Yield' | 'Growth'; // legacy chip
   strategyTags?: string[];
+  investorPersonas?: InvestorPersona[];
 
-  // Small “Investor Fit” chip
-  riskProfile?: RiskProfile;
-
+  // Lifecycle
+  status: PitchStatus;
   createdAt: number;
   updatedAt: number;
 }
 
+/** Input shape used by savePitch; still based on the canonical Pitch fields. */
 export type PitchInput = Partial<Pitch>;

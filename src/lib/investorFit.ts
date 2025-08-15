@@ -1,99 +1,79 @@
-'use client';
+// src/lib/investorFit.ts
+import type { Pitch, InvestorPersona } from '@/types/pitch';
 
-import type { Pitch } from '@/types/pitch';
+// Re-export the type so other files can safely import from "@/lib/investorFit".
+export type { InvestorPersona } from '@/types/pitch';
 
-export type InvestorType =
-  | 'MaxReturn'
-  | 'GrowthUpside'
-  | 'SteadyIncome'
-  | 'BalancedBlend'
-  | 'QuickFlip'
-  | 'CommunityImpact';
-
-export const INVESTOR_LABELS: Record<InvestorType, string> = {
-  MaxReturn: 'Max Return',
-  GrowthUpside: 'Growth Upside',
-  SteadyIncome: 'Steady Income',
-  BalancedBlend: 'Balanced Blend',
-  QuickFlip: 'Quick Flip',
-  CommunityImpact: 'Community Impact',
+export const INVESTOR_LABELS: Record<InvestorPersona, string> = {
+  'Growth First': 'Growth First',
+  'Income First': 'Income First',
+  'Balanced Blend': 'Balanced Blend',
+  'Community Backer': 'Community Backer',
+  'Steady Shelter': 'Steady Shelter',
+  'Value-Add / Flip': 'Value-Add / Flip',
 };
 
 export type InvestorFit = {
-  type: InvestorType;
-  label: string;   // human-readable label
-  reason: string;  // short explanation
-  confidence: number; // 0..1
+  top: InvestorPersona;
+  score: number; // top score (0-100)
+  personas: Array<{ persona: InvestorPersona; score: number }>;
+  reasons: string[];
 };
 
-/** Compute a plain-English investor fit based on tags, narrative, and basic economics. */
+/** Heuristic fit using yield, appreciation, story, and options. */
 export function computeInvestorFit(p: Pitch): InvestorFit {
-  const tags = (p.strategyTags ?? []).map((t) => t.toLowerCase());
-  const text = [
-    p.summary, p.problem, p.solution, p.plan, p.useOfFunds,
-    p.exitStrategy, p.improvements, p.timeline, p.residentStory,
-  ].filter(Boolean).join(' ').toLowerCase();
-
-  const scores: Record<InvestorType, number> = {
-    MaxReturn: 0,
-    GrowthUpside: 0,
-    SteadyIncome: 0,
-    BalancedBlend: 0,
-    QuickFlip: 0,
-    CommunityImpact: 0,
+  const s: Record<InvestorPersona, number> = {
+    'Growth First': 0,
+    'Income First': 0,
+    'Balanced Blend': 0,
+    'Community Backer': 0,
+    'Steady Shelter': 0,
+    'Value-Add / Flip': 0,
   };
-  const bump = (k: InvestorType, n = 1) => { scores[k] += n; };
+  const reasons: string[] = [];
 
-  // --- Tag-based signals ---
-  if (tags.includes('flip')) bump('QuickFlip', 4);
-  if (tags.includes('buy-back') || tags.includes('preservation')) bump('CommunityImpact', 4);
-  if (tags.includes('value-add') || tags.includes('lease-up')) bump('GrowthUpside', 3);
-  if (tags.includes('adu') || tags.includes('condo map') || tags.includes('entitlement')) bump('GrowthUpside', 3);
-  if (tags.includes('light reno') || tags.includes('design') || tags.includes('house hack') || tags.includes('hybrid')) bump('BalancedBlend', 2);
-  if (tags.includes('ltr') || tags.includes('stabilization') || tags.includes('yield')) bump('SteadyIncome', 2);
+  const yieldPct = p.targetYieldPct ?? 0;
+  const appr = p.expectedAppreciationPct ?? 0;
+  const share = p.appreciationSharePct ?? 0;
+  const hasBuyback = !!p.buybackAllowed;
+  const storyLen =
+    (p.residentStory ?? '').length +
+    (p.summary ?? '').length +
+    (p.problem ?? '').length;
 
-  // --- Narrative keywords ---
-  if (/\bflip|resell|sell upon completion|list in \d+\s*days|90[-\s]?day\b/.test(text)) bump('QuickFlip', 3);
-  if (/\bbuy[-\s]?back|repurchase|keep the (home|house)|hardship|preservation\b/.test(text)) bump('CommunityImpact', 3);
-  if (/\blease[-\s]?up|renovat(e|ion)|reposition|add unit|reconfigure|refi|appraisal|arv\b/.test(text)) bump('GrowthUpside', 2);
-  if (/\bstabiliz(e|ation)|cash[-\s]?flow|dscr|reserves|hold\b/.test(text)) bump('SteadyIncome', 2);
-  if (/\blight reno|cosmetic|furnish|add laundry|optimiz(e|ation)\b/.test(text)) bump('BalancedBlend', 1);
-  if (/\bspecial situation|outsized upside|asymmetric\b/.test(text)) bump('MaxReturn', 2);
+  // Income seekers: strong yield
+  s['Income First'] += Math.min(1, yieldPct / 8) * 100;
+  if (yieldPct >= 6) reasons.push('Attractive target yield');
 
-  // --- Economics nudges ---
-  const equity = p.equityPct ?? 0;
-  const goal = p.fundingGoal ?? 0;
-  if (equity >= 18 || goal > 400_000) bump('MaxReturn', 1);
-  if (equity >= 12 && equity < 18) bump('GrowthUpside', 1);
-  if (equity <= 10) bump('BalancedBlend', 1);
+  // Growth seekers: expected appreciation + investor share
+  s['Growth First'] += Math.min(1, (appr + share / 10) / 15) * 100;
+  if (appr >= 5 || share >= 25) reasons.push('Compelling upside potential');
 
-  // --- Defaults when ambiguous ---
-  if (Object.values(scores).every((v) => v === 0)) {
-    // No clear signals → conservative bias
-    bump('SteadyIncome', 1);
-    bump('BalancedBlend', 1);
+  // Balanced: average of both
+  s['Balanced Blend'] += (s['Income First'] + s['Growth First']) / 2;
+
+  // Community & shelter: narrative + buyback option
+  if (storyLen > 120) {
+    s['Community Backer'] += 60;
+    reasons.push('Strong human story / impact');
+  }
+  if (hasBuyback) {
+    s['Steady Shelter'] += 40;
+    reasons.push('Resident buy-back option');
   }
 
-  // Winner & confidence
-  const winner = (Object.keys(scores) as InvestorType[]).reduce((a, b) => (scores[a] >= scores[b] ? a : b));
-  const sorted = Object.values(scores).sort((a, b) => b - a);
-  const top = sorted[0] || 0;
-  const runner = sorted[1] || 0;
-  const confidence = Math.max(0.2, Math.min(1, (top - runner + top) / (top + (runner || 1))));
+  // Value-add: improvements/flip language
+  if ((p.improvements ?? '').length > 40 || (p.strategyTags ?? []).includes('flip')) {
+    s['Value-Add / Flip'] += 55;
+    reasons.push('Clear value-add plan');
+  }
 
-  const REASONS: Record<InvestorType, string> = {
-    MaxReturn: 'Aims for the highest total gain.',
-    GrowthUpside: 'Targets equity growth via improvements or added units.',
-    SteadyIncome: 'Prioritizes reliable cash yield from stabilized operations.',
-    BalancedBlend: 'Some yield today with measured upside later.',
-    QuickFlip: 'Short duration; renovate and resell.',
-    CommunityImpact: 'Resident-first outcomes (e.g., buy-back preservation).',
-  };
+  const personas = (Object.keys(s) as InvestorPersona[])
+    .map((persona) => ({ persona, score: Math.round(Math.max(0, Math.min(100, s[persona]))) }))
+    .sort((a, b) => b.score - a.score);
 
-  return {
-    type: winner,
-    label: INVESTOR_LABELS[winner],
-    reason: REASONS[winner],
-    confidence,
-  };
+  const top = personas[0]?.persona ?? 'Balanced Blend';
+  const score = personas[0]?.score ?? 0;
+
+  return { top, score, personas, reasons };
 }

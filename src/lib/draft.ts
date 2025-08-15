@@ -1,9 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import type { Pitch } from '@/types/pitch';
-
-const STORAGE_KEY = 'homedaq.pitchDraft.v1';
+import type { PitchStatus } from '@/types/pitch';
 
 export type Draft = {
   // Basics
@@ -13,16 +11,18 @@ export type Draft = {
   city: string;
   state: string;
   postalCode: string;
-  status: Pitch['status'];
+  status: PitchStatus;
 
-  // Economics (store as strings; parse where used)
-  valuationStr: string;
-  equityPctStr: string;
-  minInvestmentStr: string;
+  // Economics (strings for controlled inputs)
+  valuationStr: string;        // Reference Valuation (RV)
   fundingGoalStr: string;
   fundingCommittedStr: string;
-  targetYieldPctStr: string;
-  expectedAppreciationPctStr: string;
+  minInvestmentStr: string;
+
+  // SEA fields
+  appreciationSharePctStr: string;
+  horizonYearsStr: string;
+  buybackAllowed?: boolean;
 
   // Narrative
   summary: string;
@@ -34,18 +34,18 @@ export type Draft = {
   improvements: string;
   timeline: string;
   residentStory: string;
-  strategyTags: string; // comma-separated
+  strategyTags: string;
 
-  // Media
+  // Media / links
   heroImageUrl: string;
   offeringUrl: string;
   gallery: string[];
 
-  // Source pitch id (when editing)
+  // edit flow
   pitchId?: string;
 };
 
-export const defaultDraft: Draft = {
+const DEFAULT: Draft = {
   title: '',
   address1: '',
   address2: '',
@@ -55,12 +55,13 @@ export const defaultDraft: Draft = {
   status: 'review',
 
   valuationStr: '',
-  equityPctStr: '',
-  minInvestmentStr: '',
   fundingGoalStr: '',
   fundingCommittedStr: '',
-  targetYieldPctStr: '',
-  expectedAppreciationPctStr: '',
+  minInvestmentStr: '',
+
+  appreciationSharePctStr: '',
+  horizonYearsStr: '',
+  buybackAllowed: true,
 
   summary: '',
   problem: '',
@@ -76,104 +77,77 @@ export const defaultDraft: Draft = {
   heroImageUrl: '',
   offeringUrl: '',
   gallery: [],
+
+  pitchId: undefined,
 };
 
-type DraftCtx = {
-  draft: Draft;
-  setField: <K extends keyof Draft>(key: K, value: Draft[K]) => void;
-  reset: () => void;
-  loadFromPitch: (p: Partial<Pitch>) => void;
-};
+const KEY = 'homedaq.pitchDraft.v1';
 
-const Ctx = React.createContext<DraftCtx | null>(null);
+export function loadDraft(): Draft {
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(KEY) : null;
+    if (!raw) return DEFAULT;
+    const parsed = JSON.parse(raw) as Partial<Draft>;
+    return { ...DEFAULT, ...parsed };
+  } catch {
+    return DEFAULT;
+  }
+}
 
-export function DraftProvider({ children }: { children: React.ReactNode }) {
-  const [draft, setDraft] = React.useState<Draft>(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return defaultDraft;
-      const parsed = JSON.parse(raw) as Draft;
-      return { ...defaultDraft, ...parsed };
-    } catch {
-      return defaultDraft;
+export function saveDraft(d: Draft) {
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(KEY, JSON.stringify(d));
     }
-  });
+  } catch {}
+}
+
+export function clearDraft() {
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(KEY);
+    }
+  } catch {}
+}
+
+/** Hook used by the new route-based builder */
+export function useDraft() {
+  const [draft, setDraft] = React.useState<Draft>(DEFAULT);
 
   React.useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
-    } catch {
-      // ignore storage failures
-    }
-  }, [draft]);
-
-  const setField = React.useCallback(<K extends keyof Draft>(key: K, value: Draft[K]) => {
-    setDraft((d) => ({ ...d, [key]: value }));
+    setDraft(loadDraft());
   }, []);
 
-  const reset = React.useCallback(() => setDraft(defaultDraft), []);
-
-  const loadFromPitch = React.useCallback((p: Partial<Pitch>) => {
-    const loose = p as Record<string, unknown>;
-    const s = (k: string) => (typeof loose[k] === 'string' ? (loose[k] as string) : '');
-    const n = (k: string) => (typeof loose[k] === 'number' ? String(loose[k]) : '');
-    const postal = (loose['postalCode'] as string) ?? (loose['zip'] as string) ?? '';
-
-    setDraft((d) => ({
-      ...d,
-      pitchId: typeof loose['id'] === 'string' ? (loose['id'] as string) : undefined,
-      title: s('title'),
-      address1: s('address1'),
-      address2: s('address2'),
-      city: s('city'),
-      state: s('state'),
-      postalCode: postal,
-      status: (loose['status'] as Pitch['status']) ?? 'review',
-
-      valuationStr: n('valuation'),
-      equityPctStr: n('equityPct') || n('equityOfferedPct'),
-      minInvestmentStr: n('minInvestment') || n('minimumInvestment'),
-      fundingGoalStr: n('fundingGoal'),
-      fundingCommittedStr: n('fundingCommitted'),
-      targetYieldPctStr: n('targetYieldPct'),
-      expectedAppreciationPctStr: n('expectedAppreciationPct'),
-
-      summary: s('summary'),
-      problem: s('problem'),
-      solution: s('solution'),
-      plan: s('plan'),
-      useOfFunds: s('useOfFunds'),
-      exitStrategy: s('exitStrategy'),
-      improvements: s('improvements'),
-      timeline: s('timeline'),
-      residentStory: s('residentStory'),
-      strategyTags: Array.isArray(loose['strategyTags'])
-        ? (loose['strategyTags'] as string[]).join(', ')
-        : s('strategyTags'),
-
-      heroImageUrl: s('heroImageUrl'),
-      offeringUrl: s('offeringUrl'),
-      gallery: Array.isArray(loose['gallery']) ? (loose['gallery'] as string[]) : [],
-    }));
-  }, []);
-
-  const value = React.useMemo(
-    () => ({ draft, setField, reset, loadFromPitch }),
-    [draft, setField, reset, loadFromPitch]
+  const setField = React.useCallback(
+    <K extends keyof Draft>(key: K, value: Draft[K]) => {
+      setDraft((prev) => {
+        const next = { ...prev, [key]: value };
+        saveDraft(next);
+        return next;
+      });
+    },
+    []
   );
 
-  // No JSX so this can remain .ts
-  return React.createElement(Ctx.Provider, { value }, children);
+  return { draft, setField, resetDraft: clearDraft };
 }
 
-export function useDraft(): DraftCtx {
-  const v = React.useContext(Ctx);
-  if (!v) throw new Error('useDraft must be used within DraftProvider');
-  return v;
+/** Compatibility helper for older components */
+export function numFromStr(s?: string): number {
+  if (!s) return 0;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
 }
 
-export const numFromStr = (s: string): number | undefined => {
-  if (!s) return undefined;
-  const n = Number(s.replace(/[^\d.]/g, ''));
-  return Number.isFinite(n) ? n : undefined;
-};
+/**
+ * Compatibility provider: some older pages import DraftProvider.
+ * Our new builder doesn’t need context, so this is a no-op wrapper.
+ * Implemented without JSX so this file can remain .ts.
+ */
+export function DraftProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}): React.ReactElement | null {
+  return React.createElement(React.Fragment, null, children);
+}
