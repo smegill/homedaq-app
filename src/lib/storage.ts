@@ -1,5 +1,5 @@
 // Simple in-memory + localStorage persistence layer for pitches.
-// Strongly typed, no `any`, and with a small pub/sub.
+// Strongly typed, no `any`, with a small pub/sub.
 
 'use client';
 
@@ -12,16 +12,12 @@ let rows: Pitch[] = [];
 
 // Utilities
 function uuid(): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID();
-  }
-  return (
-    'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-      const r = (Math.random() * 16) | 0;
-      const v = c === 'x' ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
-    }) + ''
-  );
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }
 
 function load() {
@@ -37,21 +33,16 @@ function save() {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(LS_KEY, JSON.stringify(rows));
-  } catch {
-    // ignore storage quota errors
-  }
+  } catch {}
   for (const fn of listeners) fn([...rows]);
 }
 
-// Initialize from storage (browser only)
-if (typeof window !== 'undefined') {
-  load();
-}
+// Init
+if (typeof window !== 'undefined') load();
 
 export function subscribe(fn: (rows: Pitch[]) => void): () => void {
   listeners.add(fn);
-  // push current snapshot immediately
-  fn([...rows]);
+  fn([...rows]); // immediate snapshot
   return () => {
     listeners.delete(fn);
   };
@@ -68,7 +59,6 @@ export async function getPitchById(id: string): Promise<Pitch | null> {
 
 export async function savePitch(input: PitchInput): Promise<Pitch> {
   const now = Date.now();
-  // If editing, we expect input.id to be set by the caller
   const id = input.id ?? uuid();
 
   const existingIdx = rows.findIndex((r) => r.id === id);
@@ -87,17 +77,35 @@ export async function savePitch(input: PitchInput): Promise<Pitch> {
   const created: Pitch = {
     id,
     title: input.title ?? 'Untitled pitch',
+
+    // Location
+    address1: input.address1,
+    address2: input.address2,
     city: input.city,
     state: input.state,
     postalCode: input.postalCode,
+
+    // Economics
     valuation: input.valuation,
     minInvestment: input.minInvestment,
     equityPct: input.equityPct,
+
+    // Funding progress
+    fundingGoal: input.fundingGoal,
+    fundingCommitted: input.fundingCommitted,
+
+    // Presentation
     summary: input.summary,
     heroImageUrl: input.heroImageUrl,
     gallery: input.gallery ?? [],
+
+    // External
     offeringUrl: input.offeringUrl,
+
+    // State
     status: input.status ?? 'review',
+
+    // Narrative
     problem: input.problem,
     solution: input.solution,
     plan: input.plan,
@@ -108,6 +116,7 @@ export async function savePitch(input: PitchInput): Promise<Pitch> {
     residentStory: input.residentStory,
     strategyTags: input.strategyTags ?? [],
     riskProfile: input.riskProfile,
+
     createdAt: input.createdAt ?? now,
     updatedAt: now,
   };

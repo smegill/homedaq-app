@@ -11,8 +11,20 @@ import InvestorPrefsForm from '@/components/InvestorPrefsForm';
 import { getPrefs, subscribePrefs } from '@/lib/prefs';
 import { computeMatch, type MatchResult } from '@/lib/match';
 import MarketSnapshot from '@/components/MarketSnapshot';
+import { useRouter } from 'next/navigation';
+
+function isDemoOffering(url?: string): boolean {
+  if (!url) return true;
+  try {
+    const u = new URL(url, typeof window !== 'undefined' ? window.location.origin : 'https://local');
+    return u.hostname.toLowerCase() === 'example.com';
+  } catch {
+    return true;
+  }
+}
 
 export default function InvestPage() {
+  const router = useRouter();
   const [rows, setRows] = React.useState<Pitch[]>([]);
   const [prefs, setPrefs] = React.useState(getPrefs());
   const [active, setActive] = React.useState<Pitch | null>(null);
@@ -26,16 +38,12 @@ export default function InvestPage() {
     return () => { off1(); off2(); };
   }, []);
 
-  const candidates = React.useMemo(() => {
-    return rows.filter((r) => !['archived', 'funded', 'draft'].includes(r.status));
-  }, [rows]);
+  const candidates = React.useMemo(() => rows.filter((r) => !['archived', 'funded', 'draft'].includes(r.status)), [rows]);
 
-  const withScores = React.useMemo(() => {
-    return candidates.map((p) => {
-      const m = computeMatch(p, prefs);
-      return { pitch: p, score: m.total, detail: m };
-    });
-  }, [candidates, prefs]);
+  const withScores = React.useMemo(() => candidates.map((p) => {
+    const m = computeMatch(p, prefs);
+    return { pitch: p, score: m.total, detail: m };
+  }), [candidates, prefs]);
 
   const sorted = React.useMemo(() => {
     const arr = [...withScores];
@@ -44,7 +52,22 @@ export default function InvestPage() {
     return arr;
   }, [withScores, sortMode]);
 
-  const money = React.useMemo(() => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }), []);
+  const money = React.useMemo(
+    () => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }),
+    []
+  );
+
+  function openOffering(url?: string, disabled?: boolean) {
+    if (disabled) return;
+    const demo = isDemoOffering(url);
+    if (demo) {
+      router.push('/investors?demo=1');
+      return;
+    }
+    try {
+      window.open(url as string, '_blank', 'noopener,noreferrer');
+    } catch {}
+  }
 
   return (
     <Section className="max-w-6xl mx-auto py-10 space-y-6">
@@ -102,6 +125,40 @@ export default function InvestPage() {
                 <div>{active.city}, {active.state} {active.postalCode ?? ''}</div>
               </div>
 
+              {/* Funding progress */}
+              <div>
+                <div className="rounded-2xl bg-ink-100 h-3 overflow-hidden">
+                  <div
+                    className={`h-3 ${(active.fundingGoal ?? 0) > 0 && (active.fundingCommitted ?? 0) >= (active.fundingGoal ?? 0) ? 'bg-green-600' : 'bg-ink-900'}`}
+                    style={{
+                      width: `${
+                        (active.fundingGoal ?? 0) > 0
+                          ? Math.min(100, Math.max(0, Math.floor(((active.fundingCommitted ?? 0) / (active.fundingGoal ?? 1)) * 100)))
+                          : 0
+                      }%`,
+                    }}
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={
+                      (active.fundingGoal ?? 0) > 0
+                        ? Math.min(100, Math.max(0, Math.floor(((active.fundingCommitted ?? 0) / (active.fundingGoal ?? 1)) * 100)))
+                        : 0
+                    }
+                  />
+                </div>
+                <div className="mt-1 text-sm text-ink-700">
+                  {(active.fundingGoal ?? 0) > 0 ? (
+                    <>
+                      {Math.min(100, Math.max(0, Math.floor(((active.fundingCommitted ?? 0) / (active.fundingGoal ?? 1)) * 100)))}% funded •{' '}
+                      {money.format(active.fundingCommitted ?? 0)} / {money.format(active.fundingGoal ?? 0)}
+                    </>
+                  ) : (
+                    'Funding goal not set'
+                  )}
+                </div>
+              </div>
+
               <dl className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <div className="text-ink-600">Valuation</div>
@@ -137,29 +194,22 @@ export default function InvestPage() {
                 <div className="pt-2"><MarketSnapshot zip={active.postalCode} /></div>
               ) : null}
 
-              {breakdown ? (
-                <div className="pt-4">
-                  <div className="text-ink-900 font-medium mb-2">Why this matches you</div>
-                  <div className="space-y-2">
-                    {breakdown.parts.map((p) => (
-                      <div key={p.label} className="flex items-center justify-between gap-3 text-sm">
-                        <div className="text-ink-700">{p.label}{p.detail ? <span className="text-ink-500"> — {p.detail}</span> : null}</div>
-                        <div className="text-ink-900 font-medium">{Math.round((p.score / p.weight) * 100)}%</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-3 text-sm text-ink-600">Overall match: <span className="font-semibold text-ink-900">{breakdown.total}%</span></div>
-                </div>
-              ) : null}
-
               <div className="pt-3">
-                {active.offeringUrl ? (
-                  <Button onClick={() => { try { window.open(active.offeringUrl, '_blank', 'noopener,noreferrer'); } catch {} }}>
-                    Invest / Learn More
-                  </Button>
-                ) : (
-                  <Button variant="secondary" disabled>No external raise</Button>
-                )}
+                <Button
+                  onClick={() =>
+                    openOffering(
+                      active.offeringUrl,
+                      (active.fundingGoal ?? 0) > 0 && (active.fundingCommitted ?? 0) >= (active.fundingGoal ?? 0)
+                    )
+                  }
+                  disabled={(active.fundingGoal ?? 0) > 0 && (active.fundingCommitted ?? 0) >= (active.fundingGoal ?? 0)}
+                >
+                  {((active.fundingGoal ?? 0) > 0 && (active.fundingCommitted ?? 0) >= (active.fundingGoal ?? 0))
+                    ? 'Fully Funded'
+                    : isDemoOffering(active.offeringUrl)
+                    ? 'Demo — Learn How'
+                    : 'Invest / Learn More'}
+                </Button>
               </div>
             </div>
           </div>

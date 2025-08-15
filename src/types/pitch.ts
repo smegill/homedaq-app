@@ -17,6 +17,10 @@ export interface Pitch {
   minInvestment?: number;   // minimum a single investor can put in
   equityPct?: number;       // equity offered to outside investors (0–100)
 
+  // Funding progress
+  fundingGoal?: number;         // total target to raise (USD)
+  fundingCommitted?: number;    // amount committed so far (USD)
+
   // Presentation
   summary?: string;
   heroImageUrl?: string;

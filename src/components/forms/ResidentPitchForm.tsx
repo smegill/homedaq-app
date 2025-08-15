@@ -22,6 +22,8 @@ type FormState = {
   valuation?: number;
   minInvestment?: number;
   equityPct?: number;
+  fundingGoal?: number;
+  fundingCommitted?: number;
   heroImageUrl?: string;
   offeringUrl?: string;
   status: PitchStatus;
@@ -49,6 +51,8 @@ function toState(p?: Pitch): FormState {
     valuation: p?.valuation,
     minInvestment: p?.minInvestment,
     equityPct: p?.equityPct,
+    fundingGoal: p?.fundingGoal,
+    fundingCommitted: p?.fundingCommitted,
     heroImageUrl: p?.heroImageUrl,
     offeringUrl: p?.offeringUrl,
     status: p?.status ?? 'review',
@@ -82,18 +86,27 @@ export default function ResidentPitchForm({
     if (initial) setSt(toState(initial));
   }, [initial]);
 
+  const money = React.useMemo(
+    () => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }),
+    []
+  );
+  const pct = React.useMemo(() => {
+    if (!st.fundingGoal || st.fundingGoal <= 0) return 0;
+    const v = Math.floor(((st.fundingCommitted ?? 0) / st.fundingGoal) * 100);
+    return Math.max(0, Math.min(100, v));
+  }, [st.fundingGoal, st.fundingCommitted]);
+
   async function submit() {
     setSaving(true);
     const payload: PitchInput = {
       ...st,
-      id: pitchId ?? initial?.id, // include id in the payload if editing
+      id: pitchId ?? initial?.id,
       strategyTags: st.strategyTags
         ? st.strategyTags.split(',').map((x) => x.trim()).filter(Boolean)
         : [],
       updatedAt: Date.now(),
       createdAt: initial?.createdAt ?? Date.now(),
     };
-    // NOTE: repo's savePitch accepts a single argument
     const saved = await savePitch(payload);
     setSaving(false);
     onSaved?.(saved);
@@ -240,6 +253,59 @@ export default function ResidentPitchForm({
               placeholder="10"
             />
           </label>
+
+          {/* Funding controls */}
+          <label className="space-y-1">
+            <span className="text-sm text-ink-600">Funding goal (USD)</span>
+            <input
+              className={input}
+              inputMode="numeric"
+              value={st.fundingGoal ?? ''}
+              onChange={(e) =>
+                setSt((s) => ({ ...s, fundingGoal: e.target.value ? Number(e.target.value) : undefined }))
+              }
+              placeholder="250000"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm text-ink-600">Committed so far (USD)</span>
+            <input
+              className={input}
+              inputMode="numeric"
+              value={st.fundingCommitted ?? ''}
+              onChange={(e) =>
+                setSt((s) => ({
+                  ...s,
+                  fundingCommitted: e.target.value ? Number(e.target.value) : undefined,
+                }))
+              }
+              placeholder="75000"
+            />
+          </label>
+
+          <div className="md:col-span-2">
+            <div className="text-sm text-ink-600 mb-1">Preview: Funding progress</div>
+            <div className="rounded-2xl bg-ink-100 h-3 overflow-hidden">
+              <div
+                className="h-3 bg-ink-900 transition-all"
+                style={{ width: `${pct}%` }}
+                aria-valuenow={pct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                role="progressbar"
+              />
+            </div>
+            <div className="mt-1 text-sm text-ink-700">
+              {st.fundingGoal ? (
+                <>
+                  {pct}% funded • {money.format(st.fundingCommitted ?? 0)} / {money.format(st.fundingGoal)}
+                </>
+              ) : (
+                'Add a funding goal to show progress.'
+              )}
+            </div>
+          </div>
 
           <label className="space-y-1 md:col-span-2">
             <span className="text-sm text-ink-600">Hero image URL</span>

@@ -1,38 +1,87 @@
 'use client';
 
-import { DEFAULT_PREFERENCES, type InvestorPreferences } from '@/types/investor';
+import type { RiskProfile } from '@/types/pitch';
 
-const LS_KEY = 'homedaq:investor:prefs';
-const listeners: Set<(prefs: InvestorPreferences) => void> = new Set();
+export type InvestorPrefs = {
+  riskProfiles: RiskProfile[];
+  zip?: string;
+  minInvestment?: number;
+};
 
-function read(): InvestorPreferences {
-  if (typeof window === 'undefined') return DEFAULT_PREFERENCES;
+const LS_KEY = 'homedaq:prefs:v1';
+const listeners: Set<(p: InvestorPrefs) => void> = new Set();
+
+let prefs: InvestorPrefs = { riskProfiles: [] };
+
+// ---- persistence helpers ----
+function load(): InvestorPrefs {
+  if (typeof window === 'undefined') return prefs;
   try {
     const raw = window.localStorage.getItem(LS_KEY);
-    if (!raw) return DEFAULT_PREFERENCES;
-    const parsed = JSON.parse(raw) as InvestorPreferences;
-    return { ...DEFAULT_PREFERENCES, ...parsed };
+    const parsed = raw ? (JSON.parse(raw) as InvestorPrefs) : null;
+    if (!parsed) return { riskProfiles: [] };
+    return {
+      riskProfiles: Array.isArray(parsed.riskProfiles) ? parsed.riskProfiles : [],
+      zip: parsed.zip || undefined,
+      minInvestment:
+        typeof parsed.minInvestment === 'number' ? parsed.minInvestment : undefined,
+    };
   } catch {
-    return DEFAULT_PREFERENCES;
+    return { riskProfiles: [] };
   }
 }
 
-function write(prefs: InvestorPreferences) {
+function persist() {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(LS_KEY, JSON.stringify(prefs));
-  for (const fn of listeners) fn(prefs);
+  try {
+    window.localStorage.setItem(LS_KEY, JSON.stringify(prefs));
+  } catch {
+    // ignore quota errors
+  }
 }
 
-export function getPrefs(): InvestorPreferences {
-  return read();
+function notify() {
+  for (const fn of listeners) fn({ ...prefs });
 }
 
-export function savePrefs(next: InvestorPreferences) {
-  write(next);
+// initialize from localStorage in the browser
+if (typeof window !== 'undefined') {
+  prefs = load();
+  // keep tabs in sync
+  window.addEventListener('storage', (e) => {
+    if (e.key === LS_KEY) {
+      prefs = load();
+      notify();
+    }
+  });
 }
 
-export function subscribePrefs(fn: (prefs: InvestorPreferences) => void): () => void {
+// ---- public API ----
+export function getPrefs(): InvestorPrefs {
+  return { ...prefs };
+}
+
+/** Replace the current preferences with `next` and notify subscribers. */
+export function setPrefs(next: InvestorPrefs): InvestorPrefs {
+  prefs = {
+    riskProfiles: next.riskProfiles ?? [],
+    zip: next.zip || undefined,
+    minInvestment:
+      typeof next.minInvestment === 'number' ? next.minInvestment : undefined,
+  };
+  persist();
+  notify();
+  return getPrefs();
+}
+
+/** Merge in partial updates to preferences. */
+export function updatePrefs(patch: Partial<InvestorPrefs>): InvestorPrefs {
+  return setPrefs({ ...prefs, ...patch });
+}
+
+export function subscribePrefs(fn: (p: InvestorPrefs) => void): () => void {
   listeners.add(fn);
+  fn(getPrefs()); // immediate snapshot
   return () => {
     listeners.delete(fn);
   };
