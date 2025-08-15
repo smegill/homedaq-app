@@ -3,62 +3,51 @@
 import * as React from 'react';
 
 type Props = {
-  query: string;          // e.g. "123 Main St, Austin, TX 73301"
-  zoom?: number;          // 1-20
-  height?: number;        // px
+  address?: string;
+  zip?: string;
+  query?: string;
+  zoom?: number;
   className?: string;
 };
 
-export default function GoogleMapEmbed({
-  query,
-  zoom = 14,
-  height = 200,
-  className = '',
-}: Props) {
-  const [visible, setVisible] = React.useState(false);
-  const ref = React.useRef<HTMLDivElement | null>(null);
+/**
+ * Stable Google Maps iframe that never unmounts.
+ * We update the src attribute imperatively to avoid navigation-side focus steals.
+ */
+function GoogleMapEmbedBase({ address, zip, query, zoom = 13, className }: Props) {
+  const q = (address && address.trim()) || (zip && zip.trim()) || (query && query.trim()) || '';
+  const src = React.useMemo(
+    () =>
+      q
+        ? `https://www.google.com/maps?q=${encodeURIComponent(q)}&z=${zoom}&output=embed`
+        : `https://www.google.com/maps?&z=${zoom}&output=embed`,
+    [q, zoom]
+  );
 
+  const iframeRef = React.useRef<HTMLIFrameElement | null>(null);
+
+  // Only change the iframe's src when the computed URL actually changes.
   React.useEffect(() => {
-    const el = ref.current;
+    const el = iframeRef.current;
     if (!el) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((e) => {
-          if (e.isIntersecting) {
-            setVisible(true);
-            io.disconnect();
-          }
-        });
-      },
-      { rootMargin: '200px' }
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, []);
-
-  const src = `https://www.google.com/maps?q=${encodeURIComponent(
-    query
-  )}&z=${zoom}&output=embed`;
+    if (el.src !== src) {
+      el.src = src; // imperative update; element itself remains mounted
+    }
+  }, [src]);
 
   return (
-    <div
-      ref={ref}
-      className={`rounded-2xl overflow-hidden border border-ink-200 bg-ink-50 ${className}`}
-      style={{ height }}
-    >
-      {visible ? (
-        <iframe
-          title="Google map"
-          src={src}
-          width="100%"
-          height="100%"
-          loading="lazy"
-          referrerPolicy="no-referrer-when-downgrade"
-          allowFullScreen
-        />
-      ) : (
-        <div className="h-full w-full animate-pulse bg-ink-100" />
-      )}
-    </div>
+    <iframe
+      ref={iframeRef}
+      className={className ? className : 'h-full w-full'}
+      // Initial src keeps SSR/first paint consistent; subsequent changes happen via the effect above.
+      src={src}
+      loading="lazy"
+      tabIndex={-1}
+      aria-hidden="true"
+      title="Google Map"
+      referrerPolicy="no-referrer-when-downgrade"
+    />
   );
 }
+
+export default React.memo(GoogleMapEmbedBase);
