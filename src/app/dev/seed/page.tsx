@@ -310,7 +310,6 @@ export default function SeedPage() {
         createdAt: createdAgoDays != null ? daysAgo(createdAgoDays) : Date.now(),
         updatedAt: Date.now(),
       };
-      // eslint-disable-next-line no-await-in-loop
       await savePitch(base);
     }
     const total = getPitches().length;

@@ -1,17 +1,15 @@
-import type { RiskProfile } from './pitch';
+/** Align investor types with the new persona model. */
+
+import type { InvestorPersona } from '@/lib/investorFit';
+
+// Back-compat aliases (old code may import these)
+export type RiskProfile = InvestorPersona;
+export type InvestorType = InvestorPersona;
 
 export interface InvestorPreferences {
-  zip?: string;                    // preferred ZIP (exact or regional)
-  minValuation?: number;
-  maxValuation?: number;
-  maxMinInvestment?: number;
-  minEquityPct?: number;
-  maxEquityPct?: number;
-  riskProfiles?: RiskProfile[];    // acceptable fits
-  strategyKeywords?: string[];     // e.g. ["STR", "Light Reno", "BRRRR"]
+  zip?: string;
+  minInvestment?: number;
+  persona?: InvestorPersona | null;
+  personas?: InvestorPersona[];
+  tags?: string[];
 }
-
-export const DEFAULT_PREFERENCES: InvestorPreferences = {
-  riskProfiles: [],
-  strategyKeywords: [],
-};
